@@ -225,6 +225,65 @@ class ShahedProProvider : MainAPI() {
         "dsvplay", "stmruby", "vidshar", "uqload.org", "voe", "megankiddifference"
     )
 
+    private fun qLabel(q: Int): String = if (q == Qualities.Unknown.value) "Auto" else "${q}p"
+
+    private fun resolveStreamUrl(base: String, ref: String): String {
+        val r = ref.trim()
+        if (r.startsWith("http")) return r
+        if (r.startsWith("//")) return "https:$r"
+        return try { java.net.URL(java.net.URL(base), r).toString() } catch (_: Exception) { r }
+    }
+
+    private fun parseM3u8Levels(body: String, base: String): List<Pair<Int, String>> {
+        if (!body.contains("#EXTM3U")) return emptyList()
+        val out = mutableListOf<Pair<Int, String>>()
+        val lines = body.lines()
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("#EXT-X-STREAM-INF")) {
+                val h = Regex("""RESOLUTION=\d+x(\d+)""").find(line)?.groupValues?.get(1)?.toIntOrNull()
+                var j = i + 1
+                while (j < lines.size && (lines[j].isBlank() || lines[j].trim().startsWith("#"))) j++
+                val uri = lines.getOrNull(j)?.trim().orEmpty()
+                if (uri.isNotBlank() && !uri.startsWith("#")) {
+                    val q = if (h != null && h in 144..4320) h else Qualities.Unknown.value
+                    out.add(q to resolveStreamUrl(base, uri))
+                }
+                i = j
+            }
+            i++
+        }
+        return out.distinctBy { it.second }
+    }
+
+    private suspend fun emitM3u8Variants(
+        masterUrl: String,
+        baseName: String,
+        referer: String,
+        headers: Map<String, String>,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
+            val txt = app.get(masterUrl, referer = referer, headers = headers, timeout = 15).text
+            val levels = parseM3u8Levels(txt, masterUrl)
+            if (levels.isEmpty()) return false
+            var ok = false
+            for ((q, u) in levels) {
+                try {
+                    callback(newExtractorLink(source = this.name, name = "$baseName (${qLabel(q)})", url = u) {
+                        this.referer = referer
+                        this.headers = headers
+                        this.quality = q
+                        this.type = ExtractorLinkType.M3U8
+                    })
+                    ok = true
+                } catch (_: Exception) {}
+            }
+            ok
+        } catch (_: Exception) { false }
+    }
+
     /** vidara.to / gosbagotui.com embeds: POST /api/stream {filecode} -> {streaming_url}. */
     private suspend fun resolveVidara(
         eurl: String,
@@ -250,9 +309,16 @@ class ShahedProProvider : MainAPI() {
             val stream = Regex(""""streaming_url"\s*:\s*"([^"]+)"""").find(txt)?.groupValues?.get(1)
                 ?.replace("\\/", "/")?.takeIf { it.startsWith("http") } ?: return false
             Log.d(TAG, "vidara $code -> ${stream.take(100)}")
-            callback(newExtractorLink(source = this.name, name = label?.let { "$name $it" } ?: "$name Vidara", url = stream) {
+            val baseName = label?.let { "$name $it" } ?: "$name Vidara"
+            if (emitM3u8Variants(
+                    stream, baseName, eurl,
+                    mapOf("Referer" to eurl, "User-Agent" to BROWSER_UA),
+                    callback
+                )
+            ) return true
+            callback(newExtractorLink(source = this.name, name = baseName, url = stream) {
                 this.referer = eurl
-                this.quality = Qualities.Unknown.value
+                this.quality = extractQuality(label)
                 this.type = ExtractorLinkType.M3U8
             })
             return true
@@ -370,9 +436,10 @@ class ShahedProProvider : MainAPI() {
             val rand = (1..10).map { alpha.random() }.joinToString("")
             val final = "$data$rand?token=$token&expiry=${System.currentTimeMillis()}"
             Log.d(TAG, "dood $host -> ${final.take(100)}")
-            callback(newExtractorLink(source = this.name, name = label?.let { "$name $it" } ?: "$name Dood", url = final) {
+            val baseName = label?.let { "$name $it" } ?: "$name Dood"
+            callback(newExtractorLink(source = this.name, name = baseName, url = final) {
                 this.referer = eurl
-                this.quality = Qualities.Unknown.value
+                this.quality = extractQuality(label)
                 this.type = ExtractorLinkType.VIDEO
             })
             return true
@@ -714,10 +781,12 @@ class ShahedProProvider : MainAPI() {
                 Regex("""["'](https?://[^"']+(?:m3u8|mp4)[^"']*)["']""").findAll(scripts).forEach { m ->
                     val u = cleanUrl(m.groupValues[1])
                     if (!u.startsWith("http") || isSampleUrl(u)) return@forEach
+                    val q = extractQuality(u)
+                    val tag = if (q != Qualities.Unknown.value) " (${qLabel(q)})" else ""
                     try {
-                        callback(newExtractorLink(source = this.name, name = "$name Server", url = u) {
+                        callback(newExtractorLink(source = this.name, name = "$name Server$tag", url = u) {
                             this.referer = data
-                            this.quality = extractQuality(u)
+                            this.quality = q
                             this.type = if (u.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                         })
                     } catch (_: Exception) {}

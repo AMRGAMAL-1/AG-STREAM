@@ -223,11 +223,71 @@ class LarozaaProvider : MainAPI() {
         @JsonProperty("subtitles") val subtitles: List<VidaraSub>? = null
     )
 
+    private fun qLabel(q: Int): String = if (q == Qualities.Unknown.value) "Auto" else "${q}p"
+
+    private fun resolveStreamUrl(base: String, ref: String): String {
+        val r = ref.trim()
+        if (r.startsWith("http")) return r
+        if (r.startsWith("//")) return "https:$r"
+        return try { java.net.URL(java.net.URL(base), r).toString() } catch (_: Exception) { r }
+    }
+
+    private fun parseM3u8Levels(body: String, base: String): List<Pair<Int, String>> {
+        if (!body.contains("#EXTM3U")) return emptyList()
+        val out = mutableListOf<Pair<Int, String>>()
+        val lines = body.lines()
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("#EXT-X-STREAM-INF")) {
+                val h = Regex("""RESOLUTION=\d+x(\d+)""").find(line)?.groupValues?.get(1)?.toIntOrNull()
+                var j = i + 1
+                while (j < lines.size && (lines[j].isBlank() || lines[j].trim().startsWith("#"))) j++
+                val uri = lines.getOrNull(j)?.trim().orEmpty()
+                if (uri.isNotBlank() && !uri.startsWith("#")) {
+                    val q = if (h != null && h in 144..4320) h else Qualities.Unknown.value
+                    out.add(q to resolveStreamUrl(base, uri))
+                }
+                i = j
+            }
+            i++
+        }
+        return out.distinctBy { it.second }
+    }
+
+    private suspend fun emitM3u8Variants(
+        masterUrl: String,
+        baseName: String,
+        referer: String,
+        headers: Map<String, String>,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
+            val txt = app.get(masterUrl, referer = referer, headers = headers, timeout = 15).text
+            val levels = parseM3u8Levels(txt, masterUrl)
+            if (levels.isEmpty()) return false
+            var ok = false
+            for ((q, u) in levels) {
+                try {
+                    callback(newExtractorLink(source = this.name, name = "$baseName (${qLabel(q)})", url = u) {
+                        this.referer = referer
+                        this.headers = headers
+                        this.quality = q
+                        this.type = ExtractorLinkType.M3U8
+                    })
+                    ok = true
+                } catch (_: Exception) {}
+            }
+            ok
+        } catch (_: Exception) { false }
+    }
+
     /** vidara.to / gosbagotui.com embeds: POST /api/stream {filecode} -> {streaming_url}. */
     private suspend fun resolveVidara(
         eurl: String,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        callback: (ExtractorLink) -> Unit,
+        label: String? = null
     ): Boolean {
         try {
             val host = Regex("""https?://([^/]+)""").find(eurl)?.groupValues?.get(1)?.lowercase() ?: return false
@@ -248,9 +308,16 @@ class LarozaaProvider : MainAPI() {
                 val f = s.filePath?.takeIf { it.isNotBlank() } ?: return@forEach
                 try { subtitleCallback(newSubtitleFile(s.language ?: "sub", fixUrl(f))) } catch (_: Exception) {}
             }
-            callback(newExtractorLink(source = this.name, name = "$name Vidara", url = stream) {
+            val baseName = label?.let { "$name $it" } ?: "$name Vidara"
+            if (emitM3u8Variants(
+                    stream, baseName, eurl,
+                    mapOf("Referer" to eurl, "User-Agent" to BROWSER_UA),
+                    callback
+                )
+            ) return true
+            callback(newExtractorLink(source = this.name, name = baseName, url = stream) {
                 this.referer = eurl
-                this.quality = Qualities.Unknown.value
+                this.quality = getQualityFromName(label)
                 this.type = ExtractorLinkType.M3U8
             })
             return true
@@ -355,7 +422,10 @@ class LarozaaProvider : MainAPI() {
                 } catch (_: Exception) {}
             }
             var edoc = res.document
-            val linkName = serverName ?: "$name Server"
+            val serverQ = getQualityFromName(serverName)
+            val serverTag = if (serverQ != Qualities.Unknown.value) " (${qLabel(serverQ)})" else ""
+            val baseLinkName = serverName ?: "$name Server"
+            val linkName = baseLinkName + serverTag
             val headers = linkHeaders(base, body)
             val voeBlob = Regex("""<script type="application/json">\["(.*?)"\]""", RegexOption.DOT_MATCHES_ALL)
                 .find(body)?.groupValues?.get(1)?.replace("\\/", "/")
@@ -367,7 +437,7 @@ class LarozaaProvider : MainAPI() {
                         callback(newExtractorLink(source = this.name, name = linkName, url = real) {
                             this.referer = base
                             this.headers = headers
-                            this.quality = Qualities.Unknown.value
+                            this.quality = serverQ
                             this.type = if (real.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                         })
                         return true
@@ -382,11 +452,15 @@ class LarozaaProvider : MainAPI() {
             Log.d(TAG, "packed $eurl -> ${files.size} m3u8")
             var ok = false
             for (u in files) {
+                if (emitM3u8Variants(u, baseLinkName, base, headers, callback)) {
+                    ok = true
+                    continue
+                }
                 try {
                     callback(newExtractorLink(source = this.name, name = linkName, url = u) {
                         this.referer = base
                         this.headers = headers
-                        this.quality = Qualities.Unknown.value
+                        this.quality = serverQ
                         this.type = ExtractorLinkType.M3U8
                     })
                     ok = true
@@ -438,7 +512,7 @@ class LarozaaProvider : MainAPI() {
                         val label = li.selectFirst("strong")?.text()?.trim()?.takeIf { it.isNotBlank() }
                             ?: "سيرفر ${li.attr("data-embed-id")}"
                         Log.d(TAG, "server=$label $eu")
-                        if (resolveVidara(eu, safeSub, safeCb)) {
+                        if (resolveVidara(eu, safeSub, safeCb, label)) {
                             count.incrementAndGet()
                             return@async
                         }

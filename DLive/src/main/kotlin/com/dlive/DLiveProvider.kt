@@ -63,22 +63,6 @@ class DLiveProvider : MainAPI() {
             this.posterUrl = ch?.id?.let { DLOGOS[it] }
         }
     }
-    private suspend fun fetchCleanPlaylist(url: String, referer: String): Boolean {
-        return try {
-            val txt = app.get(url, referer = referer, timeout = 15).text
-            if (txt.length < 50) return false
-            val low = txt.lowercase()
-            if (low.contains("hackerman") || low.contains("tiktok") || low.contains(".image?")) {
-                Log.d(TAG, "poisoned playlist, skipping ${url.take(100)}")
-                return false
-            }
-            low.contains("#extm3u")
-        } catch (e: Exception) {
-            Log.d(TAG, "playlist check failed ${url.take(100)}: ${e.message}")
-            false
-        }
-    }
-
     private suspend fun emitM3u8(
         m3u8: String,
         chName: String,
@@ -86,10 +70,39 @@ class DLiveProvider : MainAPI() {
         headers: Map<String, String>,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        if (!fetchCleanPlaylist(m3u8, referer)) return false
-        Log.d(TAG, "m3u8 ${m3u8.take(100)}")
+        val txt: String
         try {
-            callback(newExtractorLink(source = this.name, name = "$name $chName", url = m3u8) {
+            txt = app.get(m3u8, referer = referer, timeout = 15).text
+        } catch (_: Exception) {
+            return false
+        }
+        if (txt.length < 50) return false
+        val low = txt.lowercase()
+        if (low.contains("hackerman") || low.contains("tiktok") || low.contains(".image?")) {
+            Log.d(TAG, "poisoned playlist, skipping ${m3u8.take(100)}")
+            return false
+        }
+        if (!low.contains("#extm3u")) return false
+        Log.d(TAG, "m3u8 ${m3u8.take(100)}")
+        val levels = parseM3u8Levels(txt, m3u8)
+        if (levels.isNotEmpty()) {
+            var ok = false
+            for ((q, u) in levels) {
+                val tag = if (q == Qualities.Unknown.value) "Auto" else "${q}p"
+                try {
+                    callback(newExtractorLink(source = this.name, name = "$chName ($tag)", url = u) {
+                        this.referer = referer
+                        this.quality = q
+                        this.type = ExtractorLinkType.M3U8
+                        this.headers = headers
+                    })
+                    ok = true
+                } catch (_: Exception) {}
+            }
+            return ok
+        }
+        try {
+            callback(newExtractorLink(source = this.name, name = chName, url = m3u8) {
                 this.referer = referer
                 this.quality = Qualities.Unknown.value
                 this.type = ExtractorLinkType.M3U8
@@ -99,6 +112,35 @@ class DLiveProvider : MainAPI() {
         } catch (_: Exception) {
             return false
         }
+    }
+
+    private fun resolveStreamUrl(base: String, ref: String): String {
+        val r = ref.trim()
+        if (r.startsWith("http")) return r
+        if (r.startsWith("//")) return "https:$r"
+        return try { java.net.URL(java.net.URL(base), r).toString() } catch (_: Exception) { r }
+    }
+
+    private fun parseM3u8Levels(body: String, base: String): List<Pair<Int, String>> {
+        val out = mutableListOf<Pair<Int, String>>()
+        val lines = body.lines()
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("#EXT-X-STREAM-INF")) {
+                val h = Regex("""RESOLUTION=\d+x(\d+)""").find(line)?.groupValues?.get(1)?.toIntOrNull()
+                var j = i + 1
+                while (j < lines.size && (lines[j].isBlank() || lines[j].trim().startsWith("#"))) j++
+                val uri = lines.getOrNull(j)?.trim().orEmpty()
+                if (uri.isNotBlank() && !uri.startsWith("#")) {
+                    val q = if (h != null && h in 144..4320) h else Qualities.Unknown.value
+                    out.add(q to resolveStreamUrl(base, uri))
+                }
+                i = j
+            }
+            i++
+        }
+        return out.distinctBy { it.second }
     }
     private suspend fun resolveWideIptv(iframeUrl: String, referer: String): String? {
         return try {
@@ -128,6 +170,7 @@ class DLiveProvider : MainAPI() {
             "Origin" to "https://dembed.st",
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
         )
+        var found = false
         try {
             val watch = app.get(data, referer = mainUrl, timeout = 20).text
             val frames = Regex("""<iframe[^>]+src=["']([^"']*stream-$id\.php[^"']*)["']""")
@@ -157,7 +200,7 @@ class DLiveProvider : MainAPI() {
                             }
                             if (m3u8.isNullOrBlank() || !m3u8.startsWith("http")) continue
                             if (emitM3u8(m3u8, chName, "https://dembed.st/", dembedHeaders, callback)) {
-                                return true
+                                found = true
                             }
                         } catch (e: Exception) {
                             Log.d(TAG, "embed failed $emb: ${e.message}")
@@ -178,7 +221,7 @@ class DLiveProvider : MainAPI() {
                                 val resolved = resolveWideIptv(src, sp)
                                 if (!resolved.isNullOrBlank()) {
                                     if (emitM3u8(resolved, chName, "https://wideiptv.top/", emptyMap(), callback)) {
-                                        return true
+                                        found = true
                                     }
                                 }
                                 return@forEach
@@ -188,7 +231,7 @@ class DLiveProvider : MainAPI() {
                                 ok = true
                                 callback(it)
                             }
-                            if (ok) return true
+                            if (ok) found = true
                         } catch (e: Exception) {
                             Log.d(TAG, "iframe failed: ${e.message}")
                         }
@@ -200,6 +243,7 @@ class DLiveProvider : MainAPI() {
         } catch (e: Exception) {
             Log.d(TAG, "loadLinks error: ${e.message}")
         }
-        return false
+        Log.d(TAG, "loadLinks found=$found")
+        return found
     }
 }

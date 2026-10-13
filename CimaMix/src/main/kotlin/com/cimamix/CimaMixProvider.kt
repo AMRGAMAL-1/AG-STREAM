@@ -493,6 +493,12 @@ class CimaMixProvider : MainAPI() {
                 val f = s.filePath?.takeIf { it.isNotBlank() } ?: return@forEach
                 try { subtitleCallback(newSubtitleFile(s.language ?: "sub", fixUrl(f))) } catch (_: Exception) {}
             }
+            if (emitM3u8Variants(
+                    stream, "$name Vidara", eurl,
+                    mapOf("Referer" to eurl, "User-Agent" to BROWSER_UA),
+                    callback
+                )
+            ) return true
             callback(newExtractorLink(source = this.name, name = "$name Vidara", url = stream) {
                 this.referer = eurl
                 this.quality = Qualities.Unknown.value
@@ -525,6 +531,89 @@ class CimaMixProvider : MainAPI() {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, vidrockGcmKey(), GCMParameterSpec(128, iv))
             String(cipher.doFinal(ct), Charsets.UTF_8).trim().takeIf { it.isNotBlank() }
+        } catch (_: Exception) { null }
+    }
+
+    private fun qLabel(q: Int): String = if (q == Qualities.Unknown.value) "Auto" else "${q}p"
+
+    private fun resolveStreamUrl(base: String, ref: String): String {
+        val r = ref.trim()
+        if (r.startsWith("http")) return r
+        if (r.startsWith("//")) return "https:$r"
+        return try { java.net.URL(java.net.URL(base), r).toString() } catch (_: Exception) { r }
+    }
+
+    private fun parseM3u8Levels(body: String, base: String): List<Pair<Int, String>> {
+        if (!body.contains("#EXTM3U")) return emptyList()
+        val out = mutableListOf<Pair<Int, String>>()
+        val lines = body.lines()
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("#EXT-X-STREAM-INF")) {
+                val h = Regex("""RESOLUTION=\d+x(\d+)""").find(line)?.groupValues?.get(1)?.toIntOrNull()
+                var j = i + 1
+                while (j < lines.size && (lines[j].isBlank() || lines[j].trim().startsWith("#"))) j++
+                val uri = lines.getOrNull(j)?.trim().orEmpty()
+                if (uri.isNotBlank() && !uri.startsWith("#")) {
+                    val q = if (h != null && h in 144..4320) h else Qualities.Unknown.value
+                    out.add(q to resolveStreamUrl(base, uri))
+                }
+                i = j
+            }
+            i++
+        }
+        return out.distinctBy { it.second }
+    }
+
+    private suspend fun emitM3u8Variants(
+        masterUrl: String,
+        baseName: String,
+        referer: String,
+        headers: Map<String, String>,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
+            val txt = app.get(masterUrl, referer = referer, headers = headers, timeout = 15).text
+            val levels = parseM3u8Levels(txt, masterUrl)
+            if (levels.isEmpty()) return false
+            var ok = false
+            for ((q, u) in levels) {
+                try {
+                    callback(newExtractorLink(source = this.name, name = "$baseName (${qLabel(q)})", url = u) {
+                        this.referer = referer
+                        this.headers = headers
+                        this.quality = q
+                        this.type = ExtractorLinkType.M3U8
+                    })
+                    ok = true
+                } catch (_: Exception) {}
+            }
+            ok
+        } catch (_: Exception) { false }
+    }
+
+    /** Vidrock playlist JSON [{resolution, url}] -> every resolution (Egy-style rows). */
+    private suspend fun resolveVidrockVariants(url: String): List<Pair<Int, String>>? {
+        if (!url.contains("/playlist/")) return null
+        if (url.contains(".m3u8") || Regex("""\.mp4([?#]|$)""").containsMatchIn(url)) return null
+        return try {
+            val t = app.get(
+                url, referer = "https://vidrock.net/", timeout = 20,
+                headers = mapOf("Accept" to "application/json,*/*")
+            ).text
+            if (t.isBlank() || t.contains("#EXTM3U")) return null
+            val arr = try { mapper.readTree(t) } catch (_: Exception) { return null }
+            if (!arr.isArray || arr.size() == 0) return null
+            val out = mutableListOf<Pair<Int, String>>()
+            for (cdn in arr) {
+                val cu = cdn.get("url")?.asText()?.trim()?.takeIf { it.startsWith("http") } ?: continue
+                if (isSampleUrl(cu)) continue
+                val res = cdn.get("resolution")?.asText()?.filter { it.isDigit() }?.toIntOrNull() ?: 0
+                val q = if (res in 144..4320) res else Qualities.Unknown.value
+                out.add(q to cu)
+            }
+            out.distinctBy { it.second }.sortedByDescending { it.first }.takeIf { it.isNotEmpty() }
         } catch (_: Exception) { null }
     }
 
@@ -661,18 +750,41 @@ class CimaMixProvider : MainAPI() {
                 val dec = vidrockDecrypt(enc) ?: continue
                 if (dec.equals("Unavailable", ignoreCase = true)) continue
                 if (!dec.startsWith("http") || isSampleUrl(dec)) continue
+                val serverQ = extractQuality(entry.key)
+                val serverTag = if (serverQ != Qualities.Unknown.value) " (${qLabel(serverQ)})" else ""
+                val variants = try { resolveVidrockVariants(dec) } catch (_: Exception) { null }
+                if (!variants.isNullOrEmpty()) {
+                    for ((res, vurl) in variants) {
+                        val q = if (res != Qualities.Unknown.value) res else serverQ
+                        val tag = if (q != Qualities.Unknown.value) " (${qLabel(q)})" else serverTag
+                        try {
+                            callback(newExtractorLink(source = this.name, name = "$name Vidrock ${entry.key}$tag", url = vurl) {
+                                this.referer = "https://vidrock.net/"
+                                this.headers = mapOf(
+                                    "Referer" to "https://vidrock.net/",
+                                    "Origin" to "https://vidrock.net",
+                                    "User-Agent" to BROWSER_UA
+                                )
+                                this.quality = q
+                                this.type = if (vurl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            })
+                            ok = true
+                        } catch (_: Exception) {}
+                    }
+                    continue
+                }
                 val surl = resolveVidrockPlaylist(dec) ?: continue
                 if (!surl.startsWith("http") || isSampleUrl(surl)) continue
                 val isM3u8 = surl.contains(".m3u8")
                 try {
-                    callback(newExtractorLink(source = this.name, name = "$name Vidrock ${entry.key}", url = surl) {
+                    callback(newExtractorLink(source = this.name, name = "$name Vidrock ${entry.key}$serverTag", url = surl) {
                         this.referer = "https://vidrock.net/"
                         this.headers = mapOf(
                             "Referer" to "https://vidrock.net/",
                             "Origin" to "https://vidrock.net",
                             "User-Agent" to BROWSER_UA
                         )
-                        this.quality = Qualities.Unknown.value
+                        this.quality = serverQ
                         this.type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     })
                     ok = true
@@ -1040,7 +1152,8 @@ class CimaMixProvider : MainAPI() {
             Log.d(TAG, "harvest empty $base")
             return false
         }
-        val linkName = label?.takeIf { it.isNotBlank() }?.let { "$name $it" } ?: "$name Server"
+        val linkTag = if (quality != Qualities.Unknown.value) " (${qLabel(quality)})" else ""
+        val linkName = (label?.takeIf { it.isNotBlank() }?.let { "$name $it" } ?: "$name Server") + linkTag
         val headers = linkHeaders(base, body)
         val voeBlob = Regex("""<script type="application/json">\["(.*?)"\]""", RegexOption.DOT_MATCHES_ALL)
             .find(body)?.groupValues?.get(1)?.replace("\\/", "/")

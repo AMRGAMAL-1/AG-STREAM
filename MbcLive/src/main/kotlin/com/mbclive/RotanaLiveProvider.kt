@@ -76,20 +76,76 @@ class RotanaLiveProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val streamUrl = channels.find { slugUrl(it.slug) == data }?.url
-            ?: channels.find { it.url == data }?.url
-            ?: data
+        val ch = channels.find { slugUrl(it.slug) == data } ?: channels.find { it.url == data }
+        val streamUrl = ch?.url ?: data
+        val baseName = ch?.name ?: this.name
+        try {
+            val txt = app.get(streamUrl, headers = streamHeaders, timeout = 15).text
+            val levels = parseM3u8Levels(txt, streamUrl)
+            if (levels.isNotEmpty()) {
+                for ((q, u) in levels) {
+                    val tag = if (q == Qualities.Unknown.value) "Auto" else "${q}p"
+                    callback.invoke(
+                        newExtractorLink(
+                            source = this.name,
+                            name = "$baseName ($tag)",
+                            url = u,
+                        ) {
+                            this.referer = referer
+                            this.headers = streamHeaders
+                            this.quality = q
+                            this.type = ExtractorLinkType.M3U8
+                        }
+                    )
+                }
+                Log.d(TAG, "variants for $baseName -> ${levels.size}")
+                return true
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "variant probe failed: ${e.message}")
+        }
         callback.invoke(
             newExtractorLink(
                 source = this.name,
-                name = this.name,
+                name = baseName,
                 url = streamUrl,
             ) {
                 this.referer = referer
                 this.headers = streamHeaders
                 this.quality = Qualities.Unknown.value
+                this.type = ExtractorLinkType.M3U8
             }
         )
         return true
+    }
+
+    private fun resolveStreamUrl(base: String, ref: String): String {
+        val r = ref.trim()
+        if (r.startsWith("http")) return r
+        if (r.startsWith("//")) return "https:$r"
+        return try { java.net.URL(java.net.URL(base), r).toString() } catch (_: Exception) { r }
+    }
+
+    private fun parseM3u8Levels(body: String, base: String): List<Pair<Int, String>> {
+        if (!body.contains("#EXTM3U")) return emptyList()
+        val out = mutableListOf<Pair<Int, String>>()
+        val lines = body.lines()
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            if (line.startsWith("#EXT-X-STREAM-INF")) {
+                val h = Regex("""RESOLUTION=\d+x(\d+)""").find(line)?.groupValues?.get(1)?.toIntOrNull()
+                var j = i + 1
+                while (j < lines.size && (lines[j].isBlank() || lines[j].trim().startsWith("#"))) j++
+                val uri = lines.getOrNull(j)?.trim().orEmpty()
+                if (uri.isNotBlank() && !uri.startsWith("#")) {
+                    val q = if (h != null && h in 144..4320) h else Qualities.Unknown.value
+                    out.add(q to resolveStreamUrl(base, uri))
+                }
+                i = j
+            }
+            i++
+        }
+        return out.distinctBy { it.second }
     }
 }
