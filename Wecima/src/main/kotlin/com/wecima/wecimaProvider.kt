@@ -1,4 +1,4 @@
-package com.lagradost.cloudstream3.ar
+package com.wecima
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*

@@ -10,7 +10,7 @@ import com.lagradost.cloudstream3.plugins.Plugin
 class YoutubeTokenPlugin: Plugin() {
     override fun load(context: Context) {
         val sharedPref = context.getSharedPreferences("YouTube", Context.MODE_PRIVATE)
-        registerMainAPI(com.lagradost.cloudstream3.ar.youtube.YoutubeProvider(sharedPref))
+        registerMainAPI(YoutubeProvider(sharedPref))
         openSettings = { ctx ->
             val activity = ctx as? AppCompatActivity
 

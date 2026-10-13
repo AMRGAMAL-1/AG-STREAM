@@ -1,4 +1,4 @@
-package com.lagradost.cloudstream3.ar.youtube
+package com.youtube
 
 import org.json.JSONObject
 import android.content.SharedPreferences
@@ -13,7 +13,6 @@ import okhttp3.Response
 import java.net.URLEncoder
 import com.lagradost.cloudstream3.CloudStreamApp
 import androidx.preference.PreferenceManager
-import com.lagradost.cloudstream3.ar.youtube.YoutubeProvider.Config.SLEEP_BETWEEN
 import kotlin.collections.remove
 import kotlin.text.get
 
@@ -1032,7 +1031,7 @@ override suspend fun load(url: String): LoadResponse {
                         val continuationItems = findContinuationItemsRecursive(jsonResponse) ?: break
                         extractVideosFromItems(continuationItems, allEpisodes)
                         currentToken = findContinuationTokenFromItems(continuationItems)
-                        kotlinx.coroutines.delay((SLEEP_BETWEEN * 10).toLong())
+                        kotlinx.coroutines.delay((Config.SLEEP_BETWEEN * 10).toLong())
                     } catch (e: Exception) {
                         break
                     }
