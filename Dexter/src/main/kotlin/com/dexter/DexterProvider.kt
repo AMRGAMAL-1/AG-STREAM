@@ -285,7 +285,7 @@ class DexterProvider : MainAPI() {
         }
     }
 
-    private fun emitFebResp(
+    private suspend fun emitFebResp(
         resp: FebResp?,
         tag: String,
         subtitleCallback: (SubtitleFile) -> Unit,
