@@ -64,17 +64,17 @@ https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/repo.json
 
 | المزود | المزود | المزود |
 |--------|--------|--------|
-| CimaMix (جديد) | CimaNow (جديد) | ShahedPro (جديد) |
-| ArabSeed (جديد) | Larozaa (جديد) | We Cima |
-| MyCima | CimaClub | Cimalight |
-| Faselhd | Topcinema | TukTukcima |
-| Akwam | Egydead | Egy |
-| Shahid4u | Shahidwbas | Lodynet |
-| Aflaam | Cee | Elif |
-| Bristege | eseek | Krmzy |
-| Alooytv | cinemana | Syria-live |
-| Tuniflix | TuniflexBlog | Viu |
-| Witanime | Yacintv | Aia2tv 2 |
+| CimaMix (جديد) | ShahedPro (جديد) | ArabSeed (جديد) |
+| Larozaa (جديد) | We Cima | MyCima |
+| CimaClub | Cimalight | Faselhd |
+| Topcinema | TukTukcima | Akwam |
+| Egydead | Egy | Shahid4u |
+| Shahidwbas | Lodynet | Aflaam |
+| Cee | Elif | Bristege |
+| eseek | Krmzy | Alooytv |
+| cinemana | Syria-live | Tuniflix |
+| TuniflexBlog | Viu | Witanime |
+| Yacintv | Aia2tv 2 | — |
 
 ### أنمي
 
@@ -95,9 +95,9 @@ https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/repo.json
 | Youtube | محتوى يوتيوب |
 | Rate | تقييمات |
 
-### جديد: CimaMix و CimaNow
+### جديد: CimaMix
 
-دعم كامل لموقعي **cimamix.net** و **cimanow.cc**:
+دعم كامل لموقع **cimamix.net**:
 - أحدث الأفلام والمسلسلات والحلقات.
 - بحث بالعربية والإنجليزية.
 - سيرفرات مشاهدة متعددة وجودات مختلفة.
