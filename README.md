@@ -72,9 +72,9 @@ https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/repo.json
 | Shahidwbas | Lodynet | Aflaam |
 | Cee | Elif | Bristege |
 | eseek | Krmzy | Alooytv |
-| cinemana | Syria-live | Tuniflix |
-| TuniflexBlog | Viu | Witanime |
-| Yacintv | Aia2tv 2 | — |
+| cinemana | Tuniflix | TuniflexBlog |
+| Viu | Witanime | Yacintv |
+| Aia2tv 2 | — | — |
 
 ### أنمي
 
@@ -88,12 +88,9 @@ https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/repo.json
 
 | المزود | الوصف |
 |--------|--------|
-| Replaymatch | مباريات وإعادة |
-| TVgarden | قنوات تلفزيونية |
 | MBC Live | قنوات MBC مباشر باللوجو (17 قناة) |
 | Rotana Live | قنوات روتانا مباشر باللوجو (10 قنوات) |
 | Youtube | محتوى يوتيوب |
-| Rate | تقييمات |
 
 ### جديد: CimaMix
 
