@@ -108,12 +108,18 @@ class LarozaaProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl/home.24" to "أحدث الإضافات",
         "$mainUrl/newvideos.php" to "أحدث الفيديوهات",
+        "$mainUrl/newvideos1.php" to "فيديوهات جديدة",
         "$mainUrl/category.php?cat=arabic-movies35" to "أفلام عربية",
         "$mainUrl/category.php?cat=all_movies_13" to "أفلام أجنبية",
+        "$mainUrl/category.php?cat=indian-movies9" to "أفلام هندية",
+        "$mainUrl/category.php?cat=7-aflammdblgh" to "أفلام مدبلجة",
+        "$mainUrl/category.php?cat=anime-movies-7" to "أفلام أنمي",
         "$mainUrl/category.php?cat=arabic-series46" to "مسلسلات عربية",
         "$mainUrl/category.php?cat=english-series10" to "مسلسلات أجنبية",
         "$mainUrl/category.php?cat=turkish-3isk-seriess48" to "مسلسلات تركية",
         "$mainUrl/category.php?cat=6-anime-series" to "مسلسلات أنمي",
+        "$mainUrl/category.php?cat=tv-programs12" to "برامج تلفزيونية",
+        "$mainUrl/category.php?cat=ramadan-2026" to "رمضان 2026",
     )
 
     private fun Element.toCardResult(): SearchResponse? {

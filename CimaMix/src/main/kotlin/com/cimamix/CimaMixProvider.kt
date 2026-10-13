@@ -43,6 +43,8 @@ class CimaMixProvider : MainAPI() {
         "$mainUrl/latest-additions" to "آخر الإضافات",
         "$mainUrl/trending" to "الأكثر رواجاً",
         "$mainUrl/top10" to "الأعلى تقييماً",
+        "$mainUrl/plays" to "المسرحيات",
+        "$mainUrl/programs" to "البرامج التلفزيونية",
     )
 
     private fun fix(url: String?): String? {

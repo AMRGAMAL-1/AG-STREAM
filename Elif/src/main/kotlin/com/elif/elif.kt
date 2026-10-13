@@ -33,6 +33,8 @@ class ElifNewsProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl/home12" to "الصفحة الرئيسية",
         "$mainUrl/category.php?cat=movies2" to "أفلام",
+        "$mainUrl/newvideos.php" to "أحدث الحلقات",
+        "$mainUrl/topvideos.php" to "الأكثر مشاهدة",
         "$mainUrl/category.php?cat=turkish-series9-3sk" to "مسلسلات تركية",
         "$mainUrl/category.php?cat=arabic-series12" to "مسلسلات عربية",
         "$mainUrl/category.php?cat=indian-serie" to "مسلسلات هندية",

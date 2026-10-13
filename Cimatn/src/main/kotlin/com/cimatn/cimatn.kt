@@ -26,6 +26,7 @@ class CimaTn : MainAPI() {
         "$mainUrl/search/label/أفلام تونسية" to "أفلام تونسية",
         "$mainUrl/search/label/مسلسلات تونسية" to "مسلسلات تونسية",
         "$mainUrl/search/label/رمضان2025" to "رمضان 2025",
+        "$mainUrl/search/label/رمضان2026" to "رمضان 2026",
         "$mainUrl/search/label/دراما" to "دراما",
         "$mainUrl/search/label/كوميديا" to "كوميديا",
         "$mainUrl/search/label/أكشن" to "أكشن"

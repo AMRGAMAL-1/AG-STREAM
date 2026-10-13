@@ -49,6 +49,8 @@ class GessehProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl/all-series/page/" to "جميع المسلسلات",
         "$mainUrl/category/الأفلام-التركية/page/" to "افلام تركية",
+        "$mainUrl/category/alarshif/page/" to "الأرشيف",
+        "$mainUrl/category/yeni-filmler/page/" to "أفلام جديدة",
         "$mainUrl/page/" to "آخر الحلقات",
     )
 

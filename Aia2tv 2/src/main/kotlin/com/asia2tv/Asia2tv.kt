@@ -24,6 +24,8 @@ class Asia2tvProvider : MainAPI() {
             Pair("$mainUrl/category/asian-drama/korean/", "دراما كورية"),
             Pair("$mainUrl/category/asian-drama/japanese/", "دراما يابانية"),
             Pair("$mainUrl/category/asian-movies/", "أفلام آسيوية"),
+            Pair("$mainUrl/category/new-episodes/", "الحلقات الجديدة"),
+            Pair("$mainUrl/category/kshow/", "برامج ترفيهية"),
             Pair("$mainUrl/completed-dramas/", "دراما مكتملة")
         )
 

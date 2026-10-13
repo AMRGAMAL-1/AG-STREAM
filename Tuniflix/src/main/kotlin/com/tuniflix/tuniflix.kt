@@ -21,7 +21,11 @@ class Tuniflix : MainAPI() {
         "$mainUrl/series/page/" to "مسلسلات",
         "$mainUrl/tg/tunisian-movies/page/" to "أفلام تونسية",
         "$mainUrl/tg/arabic-movies/page/" to "أفلام عربية",
-        "$mainUrl/tg/turkish-series/page/" to "مسلسلات تركية"
+        "$mainUrl/tg/turkish-movies/page/" to "أفلام تركية",
+        "$mainUrl/tg/turkish-series/page/" to "مسلسلات تركية",
+        "$mainUrl/tg/tunisian-series/page/" to "مسلسلات تونسية",
+        "$mainUrl/tg/arabic-series/page/" to "مسلسلات عربية",
+        "$mainUrl/tg/romdhan-2026/page/" to "رمضان 2026"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {

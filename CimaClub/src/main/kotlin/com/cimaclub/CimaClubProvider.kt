@@ -18,6 +18,7 @@ class CimaClub : MainAPI() {
         "$mainUrl/category/افلام-هندي/" to "أفلام هندي",
         "$mainUrl/category/افلام-اسيوية/" to "أفلام اسيوية",
         "$mainUrl/category/افلام-انمي/" to "أفلام انمي",
+        "$mainUrl/category/افلام-كرتون/" to "أفلام كرتون",
         "$mainUrl/category/مسلسلات-رمضان-2025/" to "مسلسلات رمضان 2025",
         "$mainUrl/category/مسلسلات-اجنبي/" to "مسلسلات أجنبي",
         "$mainUrl/category/مسلسلات-تركية/" to "مسلسلات تركية",
@@ -25,7 +26,9 @@ class CimaClub : MainAPI() {
         "$mainUrl/category/مسلسلات-اسيوية/" to "مسلسلات اسيوية",
         "$mainUrl/category/مسلسلات-هندية/" to "مسلسلات هندي",
         "$mainUrl/category/مسلسلات-انمي/" to "مسلسلات انمي",
+        "$mainUrl/category/مسلسلات-كرتون/" to "مسلسلات كرتون",
         "$mainUrl/category/مسلسلات-مدبلجة/" to "مسلسلات مدبلجة",
+        "$mainUrl/category/برامج-تلفزيونية/" to "برامج تلفزيونية",
     )
 
     private fun Element.toSearchResponse(): SearchResponse? {

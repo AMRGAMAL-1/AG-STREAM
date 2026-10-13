@@ -24,6 +24,7 @@ class krmzyProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "$mainUrl/series-list/page/" to "جميع المسلسلات",
+        "$mainUrl/page/" to "أحدث الحلقات",
     )
 
     private val cloudflareKiller by lazy { CloudflareKiller() }

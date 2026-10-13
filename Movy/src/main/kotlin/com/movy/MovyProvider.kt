@@ -201,6 +201,7 @@ class MovyProvider : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
+        "$mainUrl/" to "Home",
         "$mainUrl/browse/movie" to "Movies",
         "$mainUrl/browse/tv" to "TV Shows",
         "$mainUrl/browse/anime" to "Anime",
@@ -241,6 +242,26 @@ class MovyProvider : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        if (request.data == "$mainUrl/") {
+            if (page > 1) return newHomePageResponse(request.name, emptyList())
+            Log.d(TAG, "getMainPage Home -> $mainUrl/")
+            return try {
+                val doc = app.get(mainUrl, referer = mainUrl).document
+                val cards = parseCards(doc)
+                val rows = listOf(
+                    "Trending Movies" to cards.filter { it.url.contains("/movie/") },
+                    "Trending TV Shows" to cards.filter { it.url.contains("/tv/") },
+                    "Trending Anime" to cards.filter { it.url.contains("/anime/") },
+                ).mapNotNull { (title, items) ->
+                    val distinct = items.distinctBy { it.url }
+                    if (distinct.isEmpty()) null else HomePageList(title, distinct)
+                }
+                newHomePageResponse(rows, hasNext = false)
+            } catch (e: Exception) {
+                Log.d(TAG, "getMainPage Home failed: ${e.message}")
+                newHomePageResponse(request.name, emptyList())
+            }
+        }
         var url = request.data
         if (page > 1) url += if (url.contains("?")) "&page=$page" else "?page=$page"
         Log.d(TAG, "getMainPage ${request.name} -> $url")

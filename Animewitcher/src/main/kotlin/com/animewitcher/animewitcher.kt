@@ -145,7 +145,13 @@ class AnimeWitcherProvider : MainAPI() {
             logd("❌ [Firestore Keys] Failed to refresh keys. Error: ${e.message}")
         }
     }
+    override val mainPage = mainPageOf(
+        "$mainUrl#recent" to "أحدث الحلقات",
+        "$mainUrl#series" to "المسلسلات",
+    )
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse = withContext(Dispatchers.IO) {
+        if (request.data.endsWith("#series")) return@withContext seriesHomePage(page)
         val indexName = "recent"
         val pageParam = (page - 1).coerceAtLeast(0)
 
@@ -175,6 +181,33 @@ class AnimeWitcherProvider : MainAPI() {
             list.add(newAnimeSearchResponse(title, url, TvType.Anime) { this.posterUrl = poster })
         }
         return@withContext newHomePageResponse("أحدث الحلقات", list)
+    }
+
+    private suspend fun seriesHomePage(page: Int): HomePageResponse = withContext(Dispatchers.IO) {
+        val indexName = "series"
+        val pageParam = (page - 1).coerceAtLeast(0)
+        val attributes = URLEncoder.encode(
+            "[\"objectID\",\"name\",\"poster_uri\",\"type\",\"details\",\"tags\",\"story\",\"english_title\",\"poster\",\"rating\",\"dubbed\",\"path\"]",
+            "utf-8"
+        )
+        val params = "attributesToRetrieve=$attributes&hitsPerPage=30&page=$pageParam&query="
+        val payload = JSONObject().put("params", params)
+        val body = payload.toString().toRequestBody("application/json; charset=UTF-8".toMediaType())
+        val res = postAlgoliaQuery(indexName, body)
+        val json = try { JSONObject(res) } catch (e: Exception) { JSONObject() }
+        val hits = json.optJSONArray("hits") ?: JSONArray()
+        val list = ArrayList<SearchResponse>()
+        for (i in 0 until hits.length()) {
+            val obj = hits.getJSONObject(i)
+            val title = obj.optString("name")
+            if (title.isNullOrEmpty()) continue
+            val poster = obj.optString("poster_uri")
+            val animeId = obj.optString("objectID")
+            val fullData = URLEncoder.encode(obj.toString(), "utf-8")
+            val url = "$mainUrl/watch/${URLEncoder.encode(animeId, "utf-8")}?data=$fullData"
+            list.add(newAnimeSearchResponse(title, url, TvType.Anime) { this.posterUrl = poster })
+        }
+        return@withContext newHomePageResponse("المسلسلات", list)
     }
 
     override suspend fun search(query: String): List<SearchResponse> = withContext(Dispatchers.IO) {
