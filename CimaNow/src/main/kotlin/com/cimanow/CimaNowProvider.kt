@@ -655,6 +655,57 @@ class CimaNowProvider : MainAPI() {
             .let { if (it.endsWith("/")) it.dropLast(1) else it } + "/"
     }
 
+    private suspend fun harvestDetailPage(
+        detailHtml: String,
+        detailUrl: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        var emitted = 0
+        try {
+            if (emitPlayerLinks(detailHtml, detailUrl, subtitleCallback, callback)) emitted++
+        } catch (_: Exception) {}
+        try {
+            val doc = org.jsoup.Jsoup.parse(detailHtml)
+            val found = linkedSetOf<String>()
+            doc.select("iframe[src], iframe[data-src]").forEach { f ->
+                var src = f.attr("src").ifBlank { f.attr("data-src") }.trim()
+                if (src.isBlank() || src.contains("youtube", true)) return@forEach
+                if (src.startsWith("//")) src = "https:$src"
+                else if (src.startsWith("/")) src = fixUrl(src)
+                if (src.startsWith("http")) found.add(src)
+            }
+            val rawScripts = doc.select("script").joinToString("\n") { it.data() + "\n" + it.html() }
+            Regex("""["'](https?://[^"']+(?:m3u8|mp4)[^"']*)["']""").findAll(rawScripts).forEach {
+                val u = it.groupValues[1].replace("\\/", "/")
+                if (u.startsWith("http")) found.add(u)
+            }
+            Regex("""["']((?:https?:)?//[^"']*?/embed/[^"']*)["']""").findAll(rawScripts).forEach {
+                var u = it.groupValues[1].replace("\\/", "/")
+                if (u.startsWith("//")) u = "https:$u"
+                if (u.startsWith("http")) found.add(u)
+            }
+            for (u in found) {
+                try {
+                    if (u.contains(".m3u8") || u.contains(".mp4")) {
+                        callback(newExtractorLink(source = this.name, name = "$name Server", url = u) {
+                            this.referer = detailUrl
+                            this.quality = extractQuality(u)
+                            this.type = if (u.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                        })
+                        emitted++
+                    } else {
+                        loadExtractor(u, detailUrl, subtitleCallback) { callback(it); emitted++ }
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "detail candidate failed $u: ${e.message}")
+                }
+            }
+        } catch (_: Exception) {}
+        Log.d(TAG, "detail harvest emitted=$emitted")
+        return emitted > 0
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -668,6 +719,12 @@ class CimaNowProvider : MainAPI() {
                 try {
                     val detailUrl = if (watchUrl.contains("/watching/")) detailOf(watchUrl) else data
                     val d0 = app.get(detailUrl, headers = browserHeaders, referer = mainUrl, interceptor = cfKiller, timeout = 15)
+                    val detailHtml = d0.text
+                    try {
+                        if (harvestDetailPage(detailHtml, detailUrl, subtitleCallback, callback)) return true
+                    } catch (e: Exception) {
+                        Log.d(TAG, "detail harvest failed: ${e.message}")
+                    }
                     val btn = d0.document.select("ul.btns a.shine[href], a[href*=\"loadon\"]")
                         .map { it.attr("href") }.firstOrNull { it.contains("link=") }
                     if (btn != null) {
