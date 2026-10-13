@@ -12,5 +12,5 @@ cloudstream {
         "TvSeries"
     )
 
-    iconUrl = "https://dexter.pw/favicon.ico"
+    iconUrl = "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/Dexter/icon.png"
 }
