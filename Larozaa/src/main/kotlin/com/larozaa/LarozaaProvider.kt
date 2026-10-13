@@ -108,7 +108,6 @@ class LarozaaProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl/home.24" to "أحدث الإضافات",
         "$mainUrl/newvideos.php" to "أحدث الفيديوهات",
-        "$mainUrl/newvideos1.php" to "فيديوهات جديدة",
         "$mainUrl/category.php?cat=arabic-movies35" to "أفلام عربية",
         "$mainUrl/category.php?cat=all_movies_13" to "أفلام أجنبية",
         "$mainUrl/category.php?cat=indian-movies9" to "أفلام هندية",
