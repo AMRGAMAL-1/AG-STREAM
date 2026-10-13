@@ -473,22 +473,42 @@ class YoutubeProvider(
         }
     }
 
+    private fun extractBalancedJson(html: String, startIdx: Int): String? {
+        var depth = 0
+        var inStr = false
+        var esc = false
+        var i = startIdx
+        while (i < html.length) {
+            val c = html[i]
+            if (inStr) {
+                if (esc) esc = false
+                else if (c == '\\') esc = true
+                else if (c == '"') inStr = false
+            } else {
+                if (c == '"') inStr = true
+                else if (c == '{') depth++
+                else if (c == '}') {
+                    depth--
+                    if (depth == 0) return html.substring(startIdx, i + 1)
+                }
+            }
+            i++
+        }
+        return null
+    }
+
     private fun extractYtInitialData(html: String): Map<String, Any>? {
-        val regex = Regex(
-            """(?:var ytInitialData|window\["ytInitialData"\])\s*=\s*(\{.*\});""",
-            RegexOption.DOT_MATCHES_ALL
-        )
-        val match = try {
-            regex.find(html)
+        val anchor = try {
+            Regex("""(?:var ytInitialData|window\["ytInitialData"\])\s*=\s*""").find(html)
         } catch (e: Exception) {
             null
-        }
-        return match?.groupValues?.getOrNull(1)?.let {
-            try {
-                parseJson<Map<String, Any>>(it)
-            } catch (e: Exception) {
-                null
-            }
+        } ?: return null
+        val start = html.indexOf('{', anchor.range.last + 1).takeIf { it >= 0 } ?: return null
+        val json = extractBalancedJson(html, start) ?: return null
+        return try {
+            parseJson<Map<String, Any>>(json)
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -533,6 +553,15 @@ class YoutubeProvider(
 
             val customSections = getCustomHomepages()
 
+            if (customSections.none { it.isEnabled }) {
+                list.add(MainPageData("موسيقى", "search:موسيقى"))
+                list.add(MainPageData("أفلام", "search:أفلام"))
+                list.add(MainPageData("كرة القدم", "search:كرة القدم"))
+                list.add(MainPageData("طبخ", "search:طبخ"))
+                list.add(MainPageData("ألعاب", "search:ألعاب"))
+                list.add(MainPageData("أخبار", "search:أخبار"))
+            }
+
             customSections.filter { it.isEnabled }.forEach { section ->
                 var title = section.name
                 if (title.isBlank()) title = extractNameFromUrl(section.url)
@@ -563,7 +592,61 @@ class YoutubeProvider(
 
 
 
+    private suspend fun searchSectionPage(query: String, page: Int, request: MainPageRequest): HomePageResponse {
+        val results = mutableListOf<SearchResponse>()
+        val seenIds = mutableSetOf<String>()
+        var nextContinuation: String? = null
+        val key = request.data
+        try {
+            if (page == 1) {
+                continuationTokens.remove(key)
+                val encoded = URLEncoder.encode(query, "utf-8")
+                val html = app.get("$mainUrl/results?search_query=$encoded", interceptor = ytInterceptor).text
+                savedApiKey = findConfig(html, "INNERTUBE_API_KEY")
+                savedVisitorData = findConfig(html, "VISITOR_DATA")
+                val initialData = extractYtInitialData(html)
+                if (initialData != null) {
+                    processRecursive(initialData, results, seenIds, playlistMode = false)
+                    nextContinuation = findTokenRecursive(initialData)
+                }
+            } else {
+                val tokenToUse = continuationTokens[key]
+                if (!tokenToUse.isNullOrBlank() && !savedApiKey.isNullOrBlank()) {
+                    val apiUrl = "$mainUrl/youtubei/v1/search?key=$savedApiKey"
+                    val payload = mapOf(
+                        "context" to mapOf(
+                            "client" to mapOf(
+                                "clientName" to "WEB",
+                                "clientVersion" to "2.20240101.00",
+                                "visitorData" to (savedVisitorData ?: "")
+                            )
+                        ),
+                        "continuation" to tokenToUse
+                    )
+                    val response = app.post(apiUrl, json = payload, interceptor = ytInterceptor)
+                        .parsedSafe<Map<String, Any>>()
+                    if (response != null) {
+                        val actions = response["onResponseReceivedCommands"] ?: response
+                        processRecursive(actions, results, seenIds, playlistMode = false)
+                        nextContinuation = findTokenRecursive(response)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            logError(e)
+        }
+        if (!nextContinuation.isNullOrBlank()) {
+            continuationTokens[key] = nextContinuation
+        } else {
+            continuationTokens.remove(key)
+        }
+        return newHomePageResponse(request, results, hasNext = !nextContinuation.isNullOrBlank())
+    }
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        if (request.data.startsWith("search:")) {
+            return searchSectionPage(request.data.removePrefix("search:"), page, request)
+        }
         val results = mutableListOf<SearchResponse>()
         val seenIds = mutableSetOf<String>()
         var nextContinuation: String? = null
