@@ -1,0 +1,44 @@
+[
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Dexter.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Dexter",
+        "internalName": "Dexter",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "Dexter - dexter.pw movies & series",
+        "fileSize": 43795,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "en",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/Dexter/icon.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-a9d34751d499e00df48bd5a00b5a6579592c42df2b8570f63b4eaff9da8c66b8"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Movy.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Movy",
+        "internalName": "Movy",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "Movy - movy.sx movies, series & anime",
+        "fileSize": 39984,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "en",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.movy.sx/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-10ee29db6cbffcd04845ca93873aace5c960116febf5faee9bd6cd32b0cfdde6"
+    }
+]

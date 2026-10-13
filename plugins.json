@@ -1,0 +1,1224 @@
+[
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/3isk.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "3isk",
+        "internalName": "3isk",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 31166,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://3esk.onl/wp-content/uploads/2021/01/3isk-logo.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-4cfc2ee656e3027e99593ca637015e80e620e968ed433f10999f41bac11a4492"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Aflaam.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Aflaam",
+        "internalName": "Aflaam",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 15484,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://aflaam.com/style/assets/images/logo.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-c8cbba4f4f36d76907d2b366baa480d9201b16079cef9c3bd85f20cc3049e183"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/AflamStream.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "AflamStream",
+        "internalName": "AflamStream",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "مشاهدة وتحميل أحدث الأفلام والمسلسلات المترجمة بجودة HD - أفلام ستريم",
+        "fileSize": 32860,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://aflamstream.com/wp-content/uploads/2026/02/cropped-ChatGPT-Image-Feb-10-2026-02_22_39-AM-32x32.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-3947055e8a74a3ee704ca3663d44a358cd2f091eda39998c4af92f3eada0f97a"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Aia2tv 2.cs3",
+        "status": 1,
+        "version": 3,
+        "name": "Aia2tv 2",
+        "internalName": "Aia2tv 2",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 14392,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "AsianDrama"
+        ],
+        "iconUrl": "https://media.licdn.com/dms/image/v2/C4D0BAQEhyYSi351HRw/company-logo_200_200/company-logo_200_200/0/1630489719119?e=2147483647&v=beta&t=Br69OJ2AwT5vdJHgl-DTvliEqOmp6VQLYwUWcFqG4u4",
+        "apiVersion": 1,
+        "fileHash": "sha256-15f549a22c470f8a9bd854d1287736c8063c1a74e7738bf947a206ba598791cc"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Akwam.cs3",
+        "status": 1,
+        "version": 3,
+        "name": "Akwam",
+        "internalName": "Akwam",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 30772,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ2vuGLv4zY3XpoN2jza2unCQ95xFfypfe-h3k3xteMbGxl7taw-ziXyNg&s=10",
+        "apiVersion": 1,
+        "fileHash": "sha256-7fa486792ccde806b63bc6594264c013b94557b0e4a801ce4cef109d4cbec008"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Alooytv.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Alooytv",
+        "internalName": "Alooytv",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 14658,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://fitnur.com/uploads/avatars/c5ae8dadf88bcea9549657ec451a1563.jpg",
+        "apiVersion": 1,
+        "fileHash": "sha256-96607f1f5b4e32f5ce688a75b459ab77d8bad97d08b1a2a2bc5f5dcd54035197"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/AmrTv.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "AmrTv",
+        "internalName": "AmrTv",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "AMR TV live channels",
+        "fileSize": 27539,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Live"
+        ],
+        "iconUrl": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/icon.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-0b1b1899c2fb3eb1f33395e66fe7b7e49ea8391b05aa89335c77db6097e6c3bc"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/AnimeDay.cs3",
+        "status": 1,
+        "version": 23,
+        "name": "AnimeDay",
+        "internalName": "AnimeDay",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "AnimeDay — أنمي وكرتون مدبلج ومترجم",
+        "fileSize": 3296264,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Anime",
+            "TvSeries",
+            "Movie",
+            "Cartoon"
+        ],
+        "iconUrl": "https://www.anime-day.com/images/favicon_192.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-9fa3b318b73552bfeb31749b981077a139aeffe2ac65617adcd6ba070b59e6db"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/AnimeSlayer.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "AnimeSlayer",
+        "internalName": "AnimeSlayer",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "AnimeSlayer — أنمي مدبلج ومترجم",
+        "fileSize": 29706,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie",
+            "Cartoon",
+            "TvSeries",
+            "Movie",
+            "OVA"
+        ],
+        "iconUrl": "https://anslayer.com/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-de91dacc47fbf0ce6cee112f3a46db7a0292701fb269392d92a5c3b6ff0e9975"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Animezid.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Animezid",
+        "internalName": "Animezid",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "Animezid — أنمي وكرتون مدبلج ومترجم",
+        "fileSize": 62171,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Anime",
+            "AnimeMovie",
+            "Cartoon",
+            "TvSeries",
+            "Movie",
+            "OVA"
+        ],
+        "iconUrl": "https://animezid.org/templates/egybest-by-mrbrooks/img/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-78c26ede3b9aa730142f3ccbdadcfe7e0a6941bc3826e07765f837dd2d0df752"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Animhq.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Animhq",
+        "internalName": "Animhq",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "Animhq — أنمي مترجم",
+        "fileSize": 25302,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Anime",
+            "Movie"
+        ],
+        "iconUrl": "https://animhq.com/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-9bd51b5a72ee3c78f01e7d9c0f5ddfc33b6e78cc760b57dcf6612e5b974d1140"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/ArabSeed.cs3",
+        "status": 1,
+        "version": 10,
+        "name": "ArabSeed",
+        "internalName": "ArabSeed",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "ArabSeed - arabseed.wine movies & series",
+        "fileSize": 67919,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.arabseed.wine/wp-content/uploads/2026/08/cropped-lgo222-1-2-100x100.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-fc1180fd4c1627f3715766a3eadc2f8e7514ebc42b1a52f8ec3839331b4ae908"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Bristege.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Bristege",
+        "internalName": "Bristege",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 29643,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Anime"
+        ],
+        "iconUrl": "https://brstej.com/22.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-885a3f5290dd203143130cd3be8e27526209799f719b78c496b473caff2e2f7a"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/CartoonAnime.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "CartoonAnime",
+        "internalName": "CartoonAnime",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "مسلسلات كرتون وأنمي — مشاهدة المسلسلات والأفلام المترجمة والمدبلجة.",
+        "fileSize": 25949,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Anime",
+            "TvSeries",
+            "Movie",
+            "Cartoon"
+        ],
+        "iconUrl": "https://apps-anime.com/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-446eaff8c87fa132fd880d408413336a1d589938b7582fd8f8631fb954bef59b"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/CimaCloud.cs3",
+        "status": 1,
+        "version": 29,
+        "name": "CimaCloud",
+        "internalName": "CimaCloud",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "CimaCloud — مباشر، مدبلج، مترجم",
+        "fileSize": 3295811,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Anime",
+            "TvSeries",
+            "Movie",
+            "Cartoon"
+        ],
+        "iconUrl": "https://cima-cloud.com/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-bb1f1acb0228fafa15d3f43387d6d02902865cef1d42adaaefb0beb0cb2cc458"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/CimaClub.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "CimaClub",
+        "internalName": "CimaClub",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "سيرفرات الموقع بها ضعف احيانا اذا لم يفتح  غالبا المشكلة من الموقع",
+        "fileSize": 17479,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQX1z-0NYyzyEiFs4q7X9c8SSBR6kJtVl7f7A&s",
+        "apiVersion": 1,
+        "fileHash": "sha256-284cba3b0fdf1164161c948add95c6d7822c8dd9370cb21272e322cbddfb3501"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Cimalight.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Cimalight",
+        "internalName": "Cimalight",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 25913,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie",
+            "Anime"
+        ],
+        "iconUrl": "https://yt3.googleusercontent.com/n2PDvQiQVV00JjGsg66dvMZKmyoolvCeu59Xe40pmEvhiMNE1tHqKsoEY1IpfdNNXdlle4It=s900-c-k-c0x00ffffff-no-rj",
+        "apiVersion": 1,
+        "fileHash": "sha256-41def442115b7018006e81b3184a3ab99ba75552900a9e043ac257a1bd18651a"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/CimaMix.cs3",
+        "status": 1,
+        "version": 20,
+        "name": "CimaMix",
+        "internalName": "CimaMix",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "CimaMix - cimamix.net movies & series",
+        "fileSize": 111108,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://cimamix.net/uploads/logos/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-022c475be6112c627f561fc96a7d3bda96695ed9961e834ed5366fb57d365f94"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Cimatn.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Cimatn",
+        "internalName": "Cimatn",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 38298,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie",
+            "Drama"
+        ],
+        "iconUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS-7OxHmLaqTWIj7eJv55zxus1xKVp5ssQPAKYjydt7Lg&s",
+        "apiVersion": 1,
+        "fileHash": "sha256-5e45333650bcd805413d3ee9d6ba3590fb1bbebe64f9a050edd54a4a79b53648"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/DDramaCafe.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "DDramaCafe",
+        "internalName": "DDramaCafe",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "دراما كافيه — أفلام ومسلسلات بجودات متعددة",
+        "fileSize": 22896,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://ddramacafe-tv.casa/templates/Drama/img/apple-touch-icon.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-b8ef75553bf60f8476a09339904e55e0f8f65610ab33fa14d493d02169c20d31"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/dima-toon.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "dima-toon",
+        "internalName": "dima-toon",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 19812,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Anime"
+        ],
+        "iconUrl": "https://www.dima-toon.com/wp-content/uploads/2025/10/DimaToonlogo11.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-048fc02cd74f7d43a2618a563a17c3727a2a801accb20f9e1cf13ef6e68619ef"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/DLive.cs3",
+        "status": 1,
+        "version": 2,
+        "name": "DLive",
+        "internalName": "DLive",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "DLive - dlive.sx 24/7 live channels",
+        "fileSize": 52111,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Live"
+        ],
+        "iconUrl": "https://dlive.sx/assets/logos/logo.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-68d8ac9cdddf83984ef9fb7a7fc52d412603abb0a8857b8a804dfb42c8dc0a32"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/DramaWorld.cs3",
+        "status": 1,
+        "version": 3,
+        "name": "DramaWorld",
+        "internalName": "DramaWorld",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "DramaWorld (عالم الدراما) — أفلام ومسلسلات وقنوات بث مباشر.",
+        "fileSize": 27363,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/DramaWorld/icon.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-ce9e73a950306ce76ec1443fac9685e270256a3bd33d372aaa765a3b8aff5321"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Egy.cs3",
+        "status": 1,
+        "version": 2,
+        "name": "Egy",
+        "internalName": "Egy",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 52545,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/Egy/icon.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-f17844ab9945a9bcd31a39c95e9e8e2237d1bec00579bea51db8392c34507ee6"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/EgyBest.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "EgyBest",
+        "internalName": "EgyBest",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "مشاهدة الأفلام والمسلسلات والأنمي بجودات متعددة - ايجي بست",
+        "fileSize": 30518,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://egytbest.live/wp-content/themes/EgyBest/essets/img/anime.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-dcd56c4e83eb25d86624eb15240f268f951b36f14cb14df73199064901f0b640"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Egydead.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Egydead",
+        "internalName": "Egydead",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 66649,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime",
+            "AsianDrama"
+        ],
+        "iconUrl": "https://yt3.googleusercontent.com/ytc/AIdro_kgVTM6DJtx3tcS4gkPOOPnwFXKNhsrFyMRigWOlWomuQ=s900-c-k-c0x00ffffff-no-rj",
+        "apiVersion": 1,
+        "fileHash": "sha256-a45629cdd3102b4e3b6c9d9f4d158af85101d38fb5dfc6dba5255a4c493c1058"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Elif.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Elif",
+        "internalName": "Elif",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 31163,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Anime",
+            "Movie"
+        ],
+        "iconUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQq14Sk88U37tIhiRndbNczqn0ectswZly90f1oCa_zbg&s=10",
+        "apiVersion": 1,
+        "fileHash": "sha256-a4caa05d8848ca0018b0466d13104066ce74dcf052d8e2b97ad1eba7135dc4d1"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/eseek.cs3",
+        "status": 1,
+        "version": 3,
+        "name": "eseek",
+        "internalName": "eseek",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 38083,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://gesseh.net/wp-content/uploads/2024/10/keesatlogo.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-07c6d94ae7c7bc195e32050920a32807373d03c271ccf8d80eefa0e52fbdda24"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Faselhd.cs3",
+        "status": 1,
+        "version": 3,
+        "name": "Faselhd",
+        "internalName": "Faselhd",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 55611,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ03aoQBNDy_Hkm5MUGGvluPvK7To7BdGiSnzQn7WJ3fQ&s=10",
+        "apiVersion": 1,
+        "fileHash": "sha256-cfc13f1b791e2381694fc7680e68ba41715e85a6abf884ef4c4ac1454adf5869"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Krmzy.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Krmzy",
+        "internalName": "Krmzy",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "البحث لا يعمل حاليا مشكلة من الموقع",
+        "fileSize": 29698,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRwTnAJOvyri3uHzHxjkEdlaBBKs8MAvIuJtFmCoo9u5qYiuFpHZjcl6tDi&s=10",
+        "apiVersion": 1,
+        "fileHash": "sha256-1ed09921605b2a6a209eceea82e8f60d0066d2c8fb3966722867ca945f8b09df"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Larozaa.cs3",
+        "status": 1,
+        "version": 8,
+        "name": "Larozaa",
+        "internalName": "Larozaa",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "Larozaa - larozaa.casa videos",
+        "fileSize": 45137,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://larozaa.casa/uploads/custom-logo.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-a1e613aaf679c22ab7c650598ab7943a272cbc63dd2d4ce558facbe29c313ba9"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Lodynet.cs3",
+        "status": 1,
+        "version": 3,
+        "name": "Lodynet",
+        "internalName": "Lodynet",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 44446,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "tvTypes"
+        ],
+        "iconUrl": "https://lodynet.watch/wp-content/themes/Lodynet2020/Img/Logo.webp",
+        "apiVersion": 1,
+        "fileHash": "sha256-8e866e1f498a0fba65e2b077e100086e71f67d56805ec1bf6450c54f4ffa1ba0"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/MbcLive.cs3",
+        "status": 1,
+        "version": 5,
+        "name": "MbcLive",
+        "internalName": "MbcLive",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "MBC live channels + Saudi/news/religious (clear HLS & Widevine DRM)",
+        "fileSize": 35948,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Live"
+        ],
+        "iconUrl": "https://shahid.mbc.net/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-d79e24333490dfbb8bf1d8391675bae956927937d3a8a7b054756898cec3462d"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/MoviPlus.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "MoviPlus",
+        "internalName": "MoviPlus",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "أفلام ومسلسلات أونلاين بجودات متعددة - موفي بلس",
+        "fileSize": 31589,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://movi-plus.com/brand/logo.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-11a2d13c382d3ac7799dcff859cf7efc86a882ac5519bfc9aa3fd37d4e40807e"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/MovizLand.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "MovizLand",
+        "internalName": "MovizLand",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "مشاهدة وتحميل أحدث الأفلام والمسلسلات المترجمة بجودات عالية - موفيز لاند",
+        "fileSize": 37595,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.moviz.land/wp-content/uploads/2026/08/cropped-Cawdwdwture-32x32.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-1e4a94fbfd16897f7b9de1d26e88fa650bbad882b21f2bd2e50b2c737c6235bb"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/MyCimaProvider.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "MyCimaProvider",
+        "internalName": "MyCimaProvider",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 45475,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime",
+            "AsianDrama"
+        ],
+        "iconUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTxoF3lscri32oVf0iQlhbjFEoUn2xg3OmQIx4wYdDmqw&s",
+        "apiVersion": 1,
+        "fileHash": "sha256-ff8e09bb07cb94fad7216e8c6a29bdff3d5758e6f7f1c4b68bacad18935bfe5a"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/OstoraLive.cs3",
+        "status": 1,
+        "version": 6,
+        "name": "OstoraLive",
+        "internalName": "OstoraLive",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "Ostora Live channels",
+        "fileSize": 41292,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Live"
+        ],
+        "apiVersion": 1,
+        "fileHash": "sha256-4ceba66134434d419a4d2edd0eac14b5c5a4731b817dd0a852f9a78966d95575"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/OstoraVod.cs3",
+        "status": 1,
+        "version": 5,
+        "name": "OstoraVod",
+        "internalName": "OstoraVod",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "Ostora movies, series and shows",
+        "fileSize": 40472,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "apiVersion": 1,
+        "fileHash": "sha256-826fbec681e9c6eae47b77cca00f088291bac659d1951f00de13e5280fe2f43b"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/QanwatLive.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "QanwatLive",
+        "internalName": "QanwatLive",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "قنوات عربية بث مباشر بجميع الجودات - قنوات لايف",
+        "fileSize": 24152,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Live"
+        ],
+        "iconUrl": "https://lh3.googleusercontent.com/ULB6iBuCeTVvSjjjU1A-O8e9ZpVba6uvyhtiWRti_rBAs9yMYOFBujxriJRZ-A=h60",
+        "apiVersion": 1,
+        "fileHash": "sha256-5c840f948053b72e3083436f0acc052739c43ce5c2b0f5397c88e77b11266532"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/QDrama.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "QDrama",
+        "internalName": "QDrama",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "كيو دراما — مسلسلات بجودات متعددة",
+        "fileSize": 22809,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime"
+        ],
+        "iconUrl": "https://vod.q-drama.com/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-ab15dd02b22d3bbf2372a3ed5547db1c17402eb37c6e23924514d1cabc96ac9a"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Qfilm.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Qfilm",
+        "internalName": "Qfilm",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "مشاهدة أفلام اون لاين بجودة HD - كيو فيلم",
+        "fileSize": 26457,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie"
+        ],
+        "iconUrl": "https://a.qfilm.tv/favicons/favicon-32x32.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-b07f393e5da5abe8025129852300a450968223d5ff9f74eabaaa5aef9cf699b5"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Screenify.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Screenify",
+        "internalName": "Screenify",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "Screenify+ — أقسام التطبيق الحقيقية: باقات البث المباشر Xtream + أفلام ومسلسلات وأنمي myychann.",
+        "fileSize": 58258,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Live"
+        ],
+        "iconUrl": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/Screenify/icon.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-3c49d2aa68affd7f9cf12a5fa3d795c88e1d38810f349124b63e4b83b15a4e84"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/ShahedPro.cs3",
+        "status": 1,
+        "version": 13,
+        "name": "ShahedPro",
+        "internalName": "ShahedPro",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "ShahedPro - shahedpro.com movies & series",
+        "fileSize": 55222,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.shahedpro.com/wp-content/uploads/2026/10/favicon.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-922e3e8cedcd98aad3e6f516aa7a92859a40d0265e19ae3cff7b6de1253f90d1"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Shahid4u.cs3",
+        "status": 1,
+        "version": 2,
+        "name": "Shahid4u",
+        "internalName": "Shahid4u",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 36553,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS3Ig85ZYdRsjDw--peeI2RsBqOWmvnmvKKsT4UONdPMQ&s=10",
+        "apiVersion": 1,
+        "fileHash": "sha256-4b96b8b6f45a5e2f630ae2ef8d5f8e40f2037a927dbc5275eae30dc7b63b35af"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/ShahidLive.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "ShahidLive",
+        "internalName": "ShahidLive",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "أحدث الأفلام والمسلسلات والأنمي بجودات متعددة - شاهد لايف",
+        "fileSize": 66326,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://shahid.live/logo.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-a2ba5e7a31aaba103be9ea5562af372495d542f019a34c0229f51c6a87a9313b"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Shahidwbas.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Shahidwbas",
+        "internalName": "Shahidwbas",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 18361,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://cdn.wccftech.com/wp-content/uploads/2018/01/Youtube-music.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-f89172fe028aa79efa3ca5a4c48ddb5080548fb430528ee2f42a56f89280895d"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/StarDima.cs3",
+        "status": 1,
+        "version": 15,
+        "name": "StarDima",
+        "internalName": "StarDima",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "StarDima — ستارديما | أفلام ومسلسلات وكرتون مدبلج ومترجم.",
+        "fileSize": 4202227,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime",
+            "Cartoon",
+            "AnimeMovie"
+        ],
+        "iconUrl": "https://stardima.app/logo.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-7d9407de2f87a6f74e85b8ada80ed96cbec1f5bea0e667f8e826522ba4d21d66"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/StarzPlayLive.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "StarzPlayLive",
+        "internalName": "StarzPlayLive",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "StarzPlay live channels (40+ قناة بث مباشر مع كل الجودات - DRM Widevine)",
+        "fileSize": 46270,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Live"
+        ],
+        "iconUrl": "https://starzplay.com/resources/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-58f989792d9c71e74d5e85482931d085d4c811235a971e86eea1b22327fbd8fe"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Topcinema.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Topcinema",
+        "internalName": "Topcinema",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 30279,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "tvTypes"
+        ],
+        "iconUrl": "https://web8.topcinema.cam/wp-content/uploads/2023/05/cropped-icon-32x32.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-13467ab2b8e20372b12939fe4fdfad83741ecc43a6451af54089b185d509fe12"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/TukTukcima.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "TukTukcima",
+        "internalName": "TukTukcima",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 42902,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ10TEG3tTtkEF9_g3IslEP3xs0wx9EVhBs7b_H5M1gpg&s=10",
+        "apiVersion": 1,
+        "fileHash": "sha256-0d9353f8bd3daa0d533f746aaecae5d9379302369da7f439a2c181cb0e771808"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/TuniflexBlog.cs3",
+        "status": 1,
+        "version": 2,
+        "name": "TuniflexBlog",
+        "internalName": "TuniflexBlog",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 27670,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Anime",
+            "Movie"
+        ],
+        "iconUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSo47ccjaIfUnxJjGujQd6qTKTZH70W6LFeaFXht5TE8w&s",
+        "apiVersion": 1,
+        "fileHash": "sha256-a0ddcac4f47517d38304bea15a8442ba954477221eef58ab089e0313b8b106dd"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Tuniflix.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Tuniflix",
+        "internalName": "Tuniflix",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 26437,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie",
+            "Drama"
+        ],
+        "iconUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTe95deIIAAbyR9ArSievPWdM2QwiVG9bbQ6Y1uDIbRBpathzSs45b8uQ4&s=10",
+        "apiVersion": 1,
+        "fileHash": "sha256-ff4e9173e83db1203ce8713c462d48271ab0638a1d4597a3fe772de1b7ae1ada"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Viu.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Viu",
+        "internalName": "Viu",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 38046,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Movie",
+            "Drama"
+        ],
+        "iconUrl": "https://img.utdstc.com/icon/a99/c9e/a99c9ee56e731144b335282e9981a54a7584be93fc9644ad7a03b45552307876:200",
+        "apiVersion": 1,
+        "fileHash": "sha256-9ff5e88654aa3d58257d681042b74119e55e0f6417b4774532797e923ca63e40"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Wecima.cs3",
+        "status": 1,
+        "version": 2,
+        "name": "Wecima",
+        "internalName": "Wecima",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 29429,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "tvTypes"
+        ],
+        "iconUrl": "https://wecima.ac/static/img/favicon.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-56733247cfba726ed9d80d99aadeac830e514e9c2e0b6b8f7b058670cc7e1353"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Yacintv.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Yacintv",
+        "internalName": "Yacintv",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 24443,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "TvSeries",
+            "Live",
+            "Movie"
+        ],
+        "iconUrl": "https://yt3.googleusercontent.com/ulm35tweg3do5istps0TgCjMmJSVczGUL2NIrXMwI1DDRi5ty29BIzQSUHVgqZN5CSo1PHhiA6M=s900-c-k-c0x00ffffff-no-rj",
+        "apiVersion": 1,
+        "fileHash": "sha256-440fb181a313ab67f7d420f4a657eb02dcd65a0aa75df28db4e3994b5ba72c1d"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Yam.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "Yam",
+        "internalName": "Yam",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "اهواك تي في — أفلام ومسلسلات بجودات متعددة",
+        "fileSize": 22590,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://yam.ahwaktv.net/templates/ahwak/img/apple-touch-icon.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-bb6d32b81d89c621f2ee0c48c1cd4980c8f11ccaa690957a1ec414f207f9943f"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/builds/Youtube.cs3",
+        "status": 1,
+        "version": 5,
+        "name": "Youtube",
+        "internalName": "Youtube",
+        "authors": [
+            "AMR GAMAL"
+        ],
+        "description": "",
+        "fileSize": 139883,
+        "repositoryUrl": "https://github.com/AMRGAMAL-1/AG-STREAM",
+        "language": "ar",
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Live",
+            "Anime",
+            "Music",
+            "Documentary"
+        ],
+        "iconUrl": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/img/youtube.jpg",
+        "apiVersion": 1,
+        "fileHash": "sha256-971e5249d5941a9d680ebb48433ccf2ac0b9da3d45ec16036e18676e00da5efd"
+    }
+]
