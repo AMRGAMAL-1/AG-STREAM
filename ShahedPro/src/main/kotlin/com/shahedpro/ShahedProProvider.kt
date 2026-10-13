@@ -32,7 +32,6 @@ class ShahedProProvider : MainAPI() {
     )
 
     private fun Element.toCardResult(): SearchResponse? {
-        // Cards: article.mc2.media-card[data-type] > a.mc2-poster-link[href] > img.mc2-img + .mc2-ht-title
         val link = this.selectFirst("a.mc2-poster-link[href]")?.attr("href")?.takeIf { it.isNotBlank() }
             ?: return null
         val fullUrl = fixUrl(link)
@@ -110,7 +109,6 @@ class ShahedProProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         Log.d(TAG, "load $url")
-        // Episode pages (/episodes/) belong to a parent series: resolve and load it instead.
         if (url.contains("/episodes/")) {
             val doc = fetchDoc(url)
             val seriesUrl = doc.select("a[href*=\"/tvshows/\"]").map { it.attr("href") }
@@ -145,9 +143,6 @@ class ShahedProProvider : MainAPI() {
 
         if (!isSeries) {
             Log.d(TAG, "movie $finalTitle")
-            // NOTE: playback requires login on the site; dataUrl = post page.
-            // loadLinks tries trailer/iframes defensively.
-            // dataUrl = watch page (detail + watch/) where server buttons live.
             val watchUrl = url.trimEnd('/') + "/watch/"
             return newMovieLoadResponse(finalTitle, url, TvType.Movie, watchUrl) {
                 this.posterUrl = poster
@@ -157,8 +152,6 @@ class ShahedProProvider : MainAPI() {
                 this.recommendations = recommendations.ifEmpty { null }
             }
         }
-
-        // ---- Series (/tvshows/) ----
         val episodes = mutableListOf<Episode>()
         doc.select("a[href*=\"/episodes/\"]").map { it.attr("href") }.filter { it.isNotBlank() }
             .distinct().forEach { h ->
@@ -488,7 +481,6 @@ class ShahedProProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit,
         label: String? = null
     ): Boolean {
-        // Same UA for page fetch and file links: some CDNs bind tokens to it.
         val pageHeaders = mapOf("User-Agent" to BROWSER_UA)
         try {
             val res = app.get(eurl, headers = pageHeaders, referer = referer, timeout = 20)
@@ -525,7 +517,6 @@ class ShahedProProvider : MainAPI() {
         }
         val linkName = label?.takeIf { it.isNotBlank() }?.let { "$name $it" } ?: "$name Server"
         val headers = linkHeaders(base, body)
-        // VOE mirrors first: decode the real stream; skip the 10s sample file entirely.
         val voeBlob = Regex("""<script type="application/json">\["(.*?)"\]""", RegexOption.DOT_MATCHES_ALL)
             .find(body)?.groupValues?.get(1)?.replace("\\/", "/")
         if (!voeBlob.isNullOrBlank()) {
@@ -543,7 +534,6 @@ class ShahedProProvider : MainAPI() {
                 } catch (_: Exception) {}
             }
         }
-        // Dood mirrors under any hostname: page itself calls /pass_md5/.
         if (body.contains("/pass_md5/")) {
             val h = Regex("""https?://([^/]+)""").find(base)?.groupValues?.get(1)?.lowercase() ?: ""
             try {
@@ -616,7 +606,6 @@ class ShahedProProvider : MainAPI() {
         } catch (e: Exception) {
             Log.d(TAG, "extractor failed $eurl: ${e.message}")
         }
-        // Packed/redirect pages the app extractors can't see: harvest directly.
         if (!emitted) {
             if (harvestEmbed(eurl, referer, quality, subtitleCallback, callback, label)) return true
         }
@@ -630,7 +619,6 @@ class ShahedProProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         Log.d(TAG, "loadLinks $data")
-        // Watch pages: <detail>/watch/ with buttons button.wSrvBtn[data-enc=base64(embed)].
         val watchCandidates = linkedSetOf<String>()
         if (data.endsWith("/watch/") || data.contains("?embedScreen=") || data.contains("embedScreen")) {
             watchCandidates.add(data)
@@ -646,7 +634,6 @@ class ShahedProProvider : MainAPI() {
                     val servers = doc.select("button.wSrvBtn[data-enc]")
                     Log.d(TAG, "$wurl servers=${servers.size}")
                     if (servers.isEmpty()) {
-                        // fallback: direct iframe (first server) + embedScreen meta
                         val found = linkedSetOf<String>()
                         doc.select("#wPBox iframe[src], iframe[src]").forEach { f ->
                             val src = cleanUrl(f.attr("src").trim())
@@ -674,7 +661,6 @@ class ShahedProProvider : MainAPI() {
                     val safeSub: (SubtitleFile) -> Unit = { sub ->
                         synchronized(this) { subtitleCallback(sub) }
                     }
-                    // Resolve servers in parallel: sequential fetches take minutes.
                     coroutineScope {
                         servers.map { btn ->
                             async {
@@ -685,7 +671,6 @@ class ShahedProProvider : MainAPI() {
                                     return@async
                                 }
                                 emb = cleanUrl(emb)
-                                // episodes sometimes carry relative paths or raw html snippets
                                 if (emb.startsWith("//")) emb = "https:$emb"
                                 else if (emb.startsWith("/")) emb = fixUrl(emb)
                                 if (emb.contains("<iframe", ignoreCase = true)) {
@@ -697,7 +682,6 @@ class ShahedProProvider : MainAPI() {
                                     Log.d(TAG, "server non-http ${emb.take(90)}")
                                     return@async
                                 }
-                                // data-type: iframe (embed page) | mp4 (direct file) | dtshcode (html snippet)
                                 val dtype = btn.attr("data-type").trim().lowercase()
                                 val label = btn.text().trim().replace(Regex("""\s+"""), " ").takeIf { it.isNotBlank() }
                                 val q = extractQuality(label)
@@ -722,7 +706,6 @@ class ShahedProProvider : MainAPI() {
                     Log.d(TAG, "watch page $wurl failed: ${e.message}")
                 }
             }
-            // last resort: unpacked scripts on detail page
             try {
                 val doc = fetchDoc(data, mainUrl)
                 val rawScripts = doc.select("script").joinToString("\n") { it.data() + "\n" + it.html() }

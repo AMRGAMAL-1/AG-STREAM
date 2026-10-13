@@ -162,8 +162,6 @@ class tunProvider : MainAPI() {
                 episodesList.size > 1 // إذا عثر السكربت على أكثر من حلقة يتم التحويل تلقائياً لمسلسل
 
         if (episodesList.isNotEmpty()) {
-            // Rule: data carries the PLAYER page (+ episode fragment), never a
-            // raw media URL (desktop client hijacks raw media into yt-dlp).
             if (isSeries) {
                 val episodeResponses = episodesList.map { ep ->
                     newEpisode("$targetPlayerUrl#ep=${ep.id}") {
@@ -182,8 +180,6 @@ class tunProvider : MainAPI() {
                 }
             }
         }
-
-        // No episode list: point at the player page itself, not <video src>.
         return newMovieLoadResponse(title, url, TvType.Movie, targetPlayerUrl) {
             this.posterUrl = poster
         }
@@ -256,8 +252,6 @@ class tunProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // data is a player-page URL (+ optional #ep=N fragment).
-        // Legacy cached cards may carry a raw media URL: pass through.
         var mediaUrl: String? = null
         val pageUrl = data.substringBefore("#")
         val epId = data.substringAfter("#ep=", "").toIntOrNull()

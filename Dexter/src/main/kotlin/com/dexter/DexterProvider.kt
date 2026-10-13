@@ -17,16 +17,12 @@ class DexterProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     private val TAG = "Dexter"
-
-    // API posters are TMDB paths (e.g. /qJ2tW6WMUDux911r6m7haRef0WH.jpg).
     private val imgW500 = "https://image.tmdb.org/t/p/w500"
     private fun img(path: String?): String? {
         if (path.isNullOrBlank()) return null
         if (path.startsWith("http")) return path
         return imgW500 + (if (path.startsWith("/")) path else "/$path")
     }
-
-    // ---------- API models ----------
 
     data class ApiItem(
         @JsonProperty("type") val type: String? = null,
@@ -86,8 +82,6 @@ class DexterProvider : MainAPI() {
         @JsonProperty("episodes") val episodes: List<EpisodeInfo>? = null,
     )
 
-    // ---------- Home ----------
-
     override val mainPage = mainPageOf(
         "$mainUrl/" to "Trending",
     )
@@ -101,7 +95,6 @@ class DexterProvider : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Homepage embeds an SEO JSON-LD ItemList with trending titles.
         val doc = app.get(request.data, referer = mainUrl).document
         val items = mutableListOf<SearchResponse>()
         doc.select("script[type=\"application/ld+json\"]").forEach { s ->
@@ -131,8 +124,6 @@ class DexterProvider : MainAPI() {
         return newHomePageResponse(request.name, items.distinctBy { it.url })
     }
 
-    // ---------- Search ----------
-
     override suspend fun search(query: String): List<SearchResponse> {
         val enc = try { URLEncoder.encode(query, "UTF-8") } catch (_: Exception) { query }
         val url = "$mainUrl/api/search?q=$enc"
@@ -156,8 +147,6 @@ class DexterProvider : MainAPI() {
             }
         }.distinctBy { it.url }
     }
-
-    // ---------- Details ----------
 
     private fun apiId(url: String): Int? {
         return Regex("""/(?:movie|show)/(\d+)""").find(url)?.groupValues?.get(1)?.toIntOrNull()
@@ -223,8 +212,6 @@ class DexterProvider : MainAPI() {
         }
     }
 
-    // ---------- Streams ----------
-
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -232,7 +219,6 @@ class DexterProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         Log.d(TAG, "loadLinks $data")
-        // Movie data: /api/movie/{id}. Episode data: /watch/tv/{id}/{s}/{e}.
         val mid = Regex("""/api/movie/(\d+)""").find(data)?.groupValues?.get(1)?.toIntOrNull()
         val ep = Regex("""/watch/tv/(\d+)/(\d+)/(\d+)""").find(data)
         return try {
@@ -240,8 +226,6 @@ class DexterProvider : MainAPI() {
                 val (id, s, e) = Triple(
                     ep.groupValues[1].toInt(), ep.groupValues[2].toInt(), ep.groupValues[3].toInt()
                 )
-                // NOTE: dexter's own HLS (Server 21) is currently down (502),
-                // so only the third-party embeds are used.
                 val targets = listOf(
                     "Cinesrc" to "https://cinesrc.st/embed/tv/$id?s=$s&e=$e",
                     "Vidfast" to "https://vidfast.vc/tv/$id/$s/$e",

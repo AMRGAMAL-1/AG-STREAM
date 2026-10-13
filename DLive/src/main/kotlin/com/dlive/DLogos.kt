@@ -1,7 +1,4 @@
 package com.dlive
-
-// Logo harvest (Wikimedia Commons): 112 verified matches.
-// Remaining channels have no poster until verified (no garbage images).
 internal val DLOGOS: Map<String, String> = mapOf<String, String>(
     "37" to "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2f/Sky_Sports_Action_-_Logo_2026.svg/500px-Sky_Sports_Action_-_Logo_2026.svg.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
     "44" to "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a3/ESPN_Bet_logo_color.svg/500px-ESPN_Bet_logo_color.svg.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",

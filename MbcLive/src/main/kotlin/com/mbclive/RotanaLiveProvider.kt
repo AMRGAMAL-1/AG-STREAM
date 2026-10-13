@@ -18,13 +18,6 @@ class RotanaLiveProvider : MainAPI() {
 
     private val W = "https://commons.wikimedia.org/wiki/Special:FilePath/"
     private fun logo(file: String) = "$W$file?width=400"
-
-    // Free HLS endpoints (verified, require rotana.net referer).
-    // NOTE: SearchResponse URLs must NOT end in .m3u8 — the desktop client
-    // hijacks raw .m3u8 links into its yt-dlp resolver (shows a fake
-    // "playlist <date>" series with 0 episodes) and never calls load().
-    // So cards carry a slug URL and load()/loadLinks() map it to the HLS.
-    // Some are geo-restricted outside MENA. Logos: Wikimedia Commons (verified).
     private val channels = listOf(
         Ch("Rotana Khalijiah - خليجية", "khaleejiya", "https://rotana.hibridcdn.net/rotananet/khaleejiya_net-7Y83PP5adWixDF93/playlist.m3u8", logo("%D8%B1%D9%88%D8%AA%D8%A7%D9%86%D8%A7%20%D8%AE%D9%84%D9%8A%D8%AC%D9%8A%D8%A9.png")),
         Ch("Rotana Drama - دراما", "drama", "https://rotana.hibridcdn.net/rotananet/drama_net-7Y83PP5adWixDF93/playlist.m3u8", logo("Rotana%20Drama.png")),
@@ -61,7 +54,6 @@ class RotanaLiveProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // Cards carry slug URLs; accept legacy raw .m3u8 URLs too.
         val ch = channels.find { slugUrl(it.slug) == url } ?: channels.find { it.url == url }
         val streamUrl = ch?.url ?: url
         return newLiveStreamLoadResponse(
@@ -72,9 +64,6 @@ class RotanaLiveProvider : MainAPI() {
             this.posterUrl = ch?.logo
         }
     }
-
-    // hibridcdn 403s segment requests without a rotana.net Referer
-    // (playlists pass, .ts fails) — forward full headers via the link.
     private val streamHeaders = mapOf(
         "Referer" to referer,
         "Origin" to "https://rotana.net",
@@ -87,7 +76,6 @@ class RotanaLiveProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // data may be a slug URL (new) or a raw .m3u8 (legacy cached cards).
         val streamUrl = channels.find { slugUrl(it.slug) == data }?.url
             ?: channels.find { it.url == data }?.url
             ?: data

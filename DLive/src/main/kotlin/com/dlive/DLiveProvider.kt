@@ -12,8 +12,6 @@ class DLiveProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Live)
 
     private val TAG = "DLive"
-
-    // Channel order: beIN Sports first, then the rest by group.
     private val GROUP_ORDER = listOf(
         "beIN Sports",
         "رياضة",
@@ -65,9 +63,6 @@ class DLiveProvider : MainAPI() {
             this.posterUrl = ch?.id?.let { DLOGOS[it] }
         }
     }
-
-    // Edge playlists get hijacked (HACKERMAN/tiktok image segments):
-    // never emit one without checking its content first.
     private suspend fun fetchCleanPlaylist(url: String, referer: String): Boolean {
         return try {
             val txt = app.get(url, referer = referer, timeout = 15).text
@@ -105,8 +100,6 @@ class DLiveProvider : MainAPI() {
             return false
         }
     }
-
-    // wideiptv.top/daddy.php?stream=SLUG -> /player/SLUG -> streamUrl: "<clean m3u8>"
     private suspend fun resolveWideIptv(iframeUrl: String, referer: String): String? {
         return try {
             val doc = app.get(iframeUrl, referer = referer, timeout = 15).document
@@ -121,10 +114,6 @@ class DLiveProvider : MainAPI() {
             null
         }
     }
-
-    // watch.php -> stream-*.php (7 hosts) -> dembed/wideiptv/cdnlivetv embeds -> m3u8.
-    // Every playlist is content-checked; poisoned edges are skipped and the
-    // next source is tried instead of returning the first hit.
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -140,7 +129,6 @@ class DLiveProvider : MainAPI() {
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
         )
         try {
-            // 1) watch page: active player iframe (first) + all player-button urls.
             val watch = app.get(data, referer = mainUrl, timeout = 20).text
             val frames = Regex("""<iframe[^>]+src=["']([^"']*stream-$id\.php[^"']*)["']""")
                 .findAll(watch).map { it.groupValues[1] }.toList()
@@ -158,7 +146,6 @@ class DLiveProvider : MainAPI() {
             for (sp in streamPages) {
                 try {
                     val sHtml = app.get(sp, referer = data, timeout = 20).text
-                    // 2a) dembed.st embeds -> const SRC edge m3u8 (validated).
                     val embeds = Regex("""https?://[A-Za-z0-9./_-]*dembed[A-Za-z0-9./_?=&%-]*""")
                         .findAll(sHtml).map { it.value }.distinct().toList()
                     for (emb in embeds) {
@@ -176,7 +163,6 @@ class DLiveProvider : MainAPI() {
                             Log.d(TAG, "embed failed $emb: ${e.message}")
                         }
                     }
-                    // 2b) other player iframes (wideiptv via resolver, rest via extractor).
                     val sDoc = try {
                         org.jsoup.Jsoup.parse(sHtml)
                     } catch (_: Exception) {

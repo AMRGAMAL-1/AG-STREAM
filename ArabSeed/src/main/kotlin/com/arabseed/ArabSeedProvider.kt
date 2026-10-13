@@ -128,7 +128,6 @@ class ArabSeedProvider : MainAPI() {
     }
 
     private fun Element.toCardResult(): SearchResponse? {
-        // Generic WP card: anchor with img, skip taxonomy/nav links.
         val links = this.select("a[href]").map { it.attr("href") }.filter { it.isNotBlank() }
         val link = links.firstOrNull { h ->
             !h.contains("/category/") && !h.contains("/tag/") && !h.contains("/author/") &&
@@ -155,8 +154,6 @@ class ArabSeedProvider : MainAPI() {
 
         val year = Regex("""(19\d{2}|20\d{2})""").find(link)?.groupValues?.get(1)?.toIntOrNull()
             ?: Regex("""(19\d{2}|20\d{2})""").find(title)?.groupValues?.get(1)?.toIntOrNull()
-
-        // Every post (movie or episode) plays itself directly: expose as Movie.
         return newMovieSearchResponse(title, fullUrl, TvType.Movie) {
             this.posterUrl = poster
             this.year = year
@@ -176,7 +173,6 @@ class ArabSeedProvider : MainAPI() {
             try { it.toCardResult() } catch (_: Exception) { null }
         }
         if (items.isEmpty()) {
-            // Fallback: post anchors carrying images.
             items = doc.select("a[href]").mapNotNull { a ->
                 try {
                     if (a.selectFirst("img") == null) return@mapNotNull null
@@ -255,9 +251,6 @@ class ArabSeedProvider : MainAPI() {
         val recommendations = doc.select("article").mapNotNull { a ->
             try { a.toCardResult() } catch (_: Exception) { null }
         }.filter { it.url != url }.distinctBy { it.url }.take(24)
-
-        // Every post has its own player behind the watch button (<post>/watch/).
-        // Play it directly as a Movie — no fake series/episodes.
         val watchUrl = doc.selectFirst("a.watch__btn[href], a[href$=\"/watch/\"]")?.attr("href")
             ?.takeIf { it.isNotBlank() }?.let { fixUrl(it) }
         if (!watchUrl.isNullOrBlank()) {
@@ -270,8 +263,6 @@ class ArabSeedProvider : MainAPI() {
                 this.recommendations = recommendations.ifEmpty { null }
             }
         }
-
-        // No watch button: fall back to episode anchors (if any).
         val epAnchors = doc.select("a[href]").filter { a ->
             val h = a.attr("href")
             val t = a.text()
@@ -436,7 +427,6 @@ class ArabSeedProvider : MainAPI() {
     ): Boolean {
         Log.d(TAG, "loadLinks $data")
         try {
-            // data is the /watch/ page (or the post page: resolve the watch button).
             var watchUrl = data
             if (!data.endsWith("/watch/")) {
                 try {
@@ -450,18 +440,15 @@ class ArabSeedProvider : MainAPI() {
             val wres = getDoc(watchUrl, data)
             val html = wres.text
             val wdoc = wres.document
-            // 1) Watch servers: li[data-server] (+ data-player-url) + deferred iframe.
             val serverLis = wdoc.select("li[data-server]")
             Log.d(TAG, "servers=${serverLis.size}")
             val targets = linkedMapOf<String, String?>()
-            // AJAX params from the watch page.
             val csrf = Regex("""csrf__token['"]?\s*:\s*["']([^"']+)""").find(html)?.groupValues?.get(1)
                 ?: Regex("""csrf_token['"]?\s*[:=]\s*["']([^"']+)""").find(html)?.groupValues?.get(1)
             val postId = serverLis.firstOrNull()?.attr("data-post")?.takeIf { it.isNotBlank() }
                 ?: Regex("""psot_id\s*:\s*['"]?(\d+)""").find(html)?.groupValues?.get(1)
             Log.d(TAG, "ajax post=$postId csrf=${csrf?.take(6)}...")
             if (!postId.isNullOrBlank() && !csrf.isNullOrBlank()) {
-                // Query every server index in parallel via the site's own endpoint.
                 coroutineScope {
                     serverLis.map { li ->
                         async {
@@ -564,13 +551,10 @@ class ArabSeedProvider : MainAPI() {
                 } catch (_: Exception) {}
                 return null
             }
-            // Resolve targets in parallel: sequential fetches exceed the 60s app limit.
             coroutineScope {
                 targets.entries.map { (u, label) ->
                     async {
                         try {
-                            // Laravel-style embed hosts (megamax) validate the session
-                            // cookie planted by their own landing page: seed it first.
                             try {
                                 val host = Regex("""https?://([^/]+)""").find(u)?.groupValues?.get(1) ?: ""
                                 if (host.isNotBlank() && (u.contains("/iframe/") || host.contains("megamax") || host.contains("q7v3k"))) {
@@ -592,7 +576,6 @@ class ArabSeedProvider : MainAPI() {
                             var res = app.get(u, headers = embedHeaders, referer = watchUrl, interceptor = cfKiller, timeout = 15)
                             var body = res.text
                             var base = u
-                            // JS-redirect stubs: follow one hop.
                             val redir = Regex("""window\.location\.replace\(\s*['"](https?://[^'"]+)['"]""").find(body)?.groupValues?.get(1)
                                 ?: Regex("""location(?:\.href)?\s*=\s*['"](https?://[^'"]+)['"]""").find(body)?.groupValues?.get(1)
                             if (redir != null && redir != u) {
@@ -609,7 +592,6 @@ class ArabSeedProvider : MainAPI() {
                             }
                             if (body.isBlank()) return@async
                             val headers = linkHeaders(base, body)
-                            // VOE mirrors first: decode the real stream; skip the 10s sample file entirely.
                             val voeBlob = Regex("""<script type="application/json">\["(.*?)"\]""", RegexOption.DOT_MATCHES_ALL)
                                 .find(body)?.groupValues?.get(1)?.replace("\\/", "/")
                             if (!voeBlob.isNullOrBlank()) {
@@ -620,7 +602,6 @@ class ArabSeedProvider : MainAPI() {
                                     return@async
                                 }
                             }
-                            // Direct files in the embed page (plain or packed).
                             val scripts = try {
                                 val raw = res.document.select("script").joinToString("\n") { it.data() + "\n" + it.html() }
                                 var s = try { JsUnpacker(raw).unpack() ?: raw } catch (_: Exception) { raw }
@@ -634,7 +615,6 @@ class ArabSeedProvider : MainAPI() {
                                 emitT(label ?: "$name Server", f, f.contains(".m3u8"), base, headers)
                             }
                             if (files.isNotEmpty()) return@async
-                            // Nested iframes.
                             res.document.select("iframe[src]").forEach { f ->
                                 val s = f.attr("src").trim()
                                 if (s.isBlank() || s.contains("youtube")) return@forEach
@@ -643,7 +623,6 @@ class ArabSeedProvider : MainAPI() {
                                     loadExtractor(nu, base, subtitleCallback, safeCb)
                                 } catch (_: Exception) {}
                             }
-                            // Fallback: hand the embed url to the app extractors.
                             try {
                                 loadExtractor(base, watchUrl, subtitleCallback, safeCb)
                             } catch (_: Exception) {}

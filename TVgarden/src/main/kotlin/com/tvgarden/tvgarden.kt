@@ -27,9 +27,6 @@ class FamelackProvider : MainAPI() {
         }
         return cachedChannels ?: emptyList()
     }
-
-    // Rule: data must be a channel KEY, never the raw stream URL
-    // (desktop client hijacks raw .m3u8 into yt-dlp: fake "playlist" series).
     private fun keyOf(ch: RawChannel): String {
         return ch.nanoid?.takeIf { it.isNotBlank() } ?: ("n:" + (ch.name ?: "?"))
     }
@@ -123,7 +120,6 @@ class FamelackProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // data is a channel KEY url (legacy cached cards may carry raw media).
         var target = data
         if (!data.contains(".m3u8", ignoreCase = true) && !data.contains("youtube.com", ignoreCase = true) && !data.contains("youtu.be", ignoreCase = true)) {
             val key = data.substringAfterLast("/")

@@ -39,7 +39,6 @@ class CimaNowProvider : MainAPI() {
     )
 
     private fun Element.toCardResult(): SearchResponse? {
-        // Cards: <article> <picture><a href="POST"><img src alt></a></picture> ... <a href=".../release-year/NNNN/">
         val link = this.selectFirst("picture a[href]")?.attr("href")?.takeIf { it.isNotBlank() }
             ?: this.selectFirst("ul.btns a.shine[href]")?.attr("href")?.takeIf { it.isNotBlank() }
             ?: return null
@@ -49,9 +48,6 @@ class CimaNowProvider : MainAPI() {
         var title = this.selectFirst("picture img")?.attr("alt")?.trim()
         if (title.isNullOrBlank()) title = this.selectFirst("img")?.attr("alt")?.trim()
         if (title.isNullOrBlank()) return null
-
-        // Cards lazy-load: real poster is in data-src; src holds a transparent
-        // LOGO image (-لوجو.png) that renders as zoomed text fragments.
         var poster = this.selectFirst("picture img")?.attr("data-src")?.takeIf { it.isNotBlank() }
             ?: this.selectFirst("img")?.attr("data-src")?.takeIf { it.isNotBlank() }
             ?: this.selectFirst("picture img")?.attr("src")?.takeIf { it.isNotBlank() }
@@ -106,7 +102,6 @@ class CimaNowProvider : MainAPI() {
     }
 
     private fun decodeWatchLink(href: String): String? {
-        // Watch buttons: https://rm.freex2line.online/loadon/?link=<base64(postUrl + "watching/")>
         return try {
             val encoded = href.substringAfter("link=").substringBefore("&").trim()
             if (encoded.isBlank() || encoded == href) return null
@@ -120,13 +115,11 @@ class CimaNowProvider : MainAPI() {
     }
 
     private fun seasonFromSlug(url: String): Int? {
-        // ...-ج2-... (جزء = part/season). URLs are percent-encoded: decode first.
         val decoded = try { URLDecoder.decode(url, "UTF-8") } catch (_: Exception) { url }
         return Regex("""-ج(\d+)-""").find(decoded)?.groupValues?.get(1)?.toIntOrNull()
     }
 
     private fun episodeFromSlug(url: String): Int? {
-        // ...-ح12-... (حلقة = episode). URLs are percent-encoded: decode first.
         val decoded = try { URLDecoder.decode(url, "UTF-8") } catch (_: Exception) { url }
         return Regex("""-ح(\d+)-""").find(decoded)?.groupValues?.get(1)?.toIntOrNull()
     }
@@ -170,14 +163,12 @@ class CimaNowProvider : MainAPI() {
         }.filter { it.url != url }.distinctBy { it.url }.take(24)
 
         if (!isSeasonPage) {
-            // ---- Movie ----
             val watchBtn = doc.select("ul.btns a.shine[href]").map { it.attr("href") }
                 .firstOrNull { it.contains("link=") }
                 ?: doc.select("a[href*=\"loadon\"]").map { it.attr("href") }
                     .firstOrNull { it.contains("link=") }
             val watchUrl = watchBtn?.let { decodeWatchLink(it) }
             Log.d(TAG, "movie $finalTitle -> watch $watchUrl")
-            // dataUrl = watching page; if not found fall back to post url
             return newMovieLoadResponse(finalTitle, url, TvType.Movie, watchUrl ?: url) {
                 this.posterUrl = poster
                 this.plot = plot
@@ -186,19 +177,14 @@ class CimaNowProvider : MainAPI() {
                 this.recommendations = recommendations.ifEmpty { null }
             }
         }
-
-        // ---- Series season page (/selary/) ----
         val seasonNum = seasonFromSlug(url)
             ?: arabicSeasonToNumber(finalTitle) ?: 1
-
-        // Episodes on this page: links like ...-ج2-ح3-... (same season)
         val episodes = mutableListOf<Episode>()
         doc.select("a[href]").map { it.attr("href") }.filter { h ->
             h.isNotBlank() && h.contains("-ح") && (episodeFromSlug(h) != null)
         }.distinct().forEach { h ->
             val full = fixUrl(h)
             val epNum = episodeFromSlug(h)
-            // keep episodes of this season (or unknown season)
             val epSeason = seasonFromSlug(h) ?: seasonNum
             if (epSeason == seasonNum) {
                 episodes.add(newEpisode(full) {
@@ -209,8 +195,6 @@ class CimaNowProvider : MainAPI() {
                 })
             }
         }
-
-        // Other seasons: /selary/ links with -جN- (different season than current)
         val seasonLinks = doc.select("a[href*=\"/selary/\"]").map { it.attr("href") }
             .filter { it.isNotBlank() }.distinct()
             .map { fixUrl(it) }.filter { it != url }
@@ -262,13 +246,6 @@ class CimaNowProvider : MainAPI() {
             else -> Qualities.Unknown.value
         }
     }
-
-    // ---------- Watching page player decrypt (reverse-engineered) ----------
-    // Tokenized watching pages embed servers encrypted: window["_vc12f6"] =
-    // Array(base64 chunks). join -> base64-decode -> XOR with "138701n" ->
-    // UTF-8 -> strip first 48 chars -> player HTML with #watch servers,
-    // embed iframe, ffQualities map and quality/download boxes.
-    // (Key is a fixed browser-fingerprint constant, verified in-page.)
     private fun decryptPlayer(html: String): String? {
         try {
             val marker = "window[\"_vc12f6\"]"
@@ -276,7 +253,6 @@ class CimaNowProvider : MainAPI() {
             if (start == -1) return null
             val open = html.indexOf('(', start + marker.length)
             if (open == -1) return null
-            // Array closes with ');' — take a bounded window (arrays are ~500KB).
             val close = html.indexOf(");", open)
             if (close == -1 || close - open > 2_000_000) return null
             val seg = html.substring(open + 1, close)
@@ -306,7 +282,6 @@ class CimaNowProvider : MainAPI() {
     }
 
     private fun decodeJetload(href: String): String? {
-        // https://jetload.top/Jetloadon4/?link=<base64(cdn mp4 url)>
         return try {
             val enc = href.substringAfter("link=").substringBefore("&").trim()
             if (enc.isBlank()) return null
@@ -351,7 +326,6 @@ class CimaNowProvider : MainAPI() {
                 Log.d(TAG, "extractor failed $url: ${e.message}")
             }
         }
-        // 1) Active watch-server embed (VK/OK/...): li[aria-label=embed] iframe.
         for (f in doc.select("li[aria-label=\"embed\"] iframe[src]")) {
             var src = f.attr("src").trim()
             if (src.startsWith("//")) src = "https:$src"
@@ -360,7 +334,6 @@ class CimaNowProvider : MainAPI() {
                 emitExt(src, Qualities.Unknown.value)
             }
         }
-        // 2) Forafile watch player: ffQualities map -> player.forafile.com/?data=b64.
         try {
             val ffRaw = Regex("""ffQualities\s*=\s*(\{.+?\});\s*var data""", RegexOption.DOT_MATCHES_ALL)
                 .find(playerHtml)?.groupValues?.get(1)
@@ -382,7 +355,6 @@ class CimaNowProvider : MainAPI() {
         } catch (e: Exception) {
             Log.d(TAG, "forafile map failed: ${e.message}")
         }
-        // 3) Quality/download boxes: direct file links with quality text.
         for (a in doc.select("li[aria-label=\"quality\"].box a[href], li[aria-label=\"download\"] a[href]")) {
             var href = a.attr("href").trim()
             if (href.isBlank()) continue
@@ -397,7 +369,6 @@ class CimaNowProvider : MainAPI() {
             if (u.startsWith("//")) u = "https:$u"
             if (!u.startsWith("http")) continue
             if (u.contains("youtube.com") || u.contains("youtu.be")) continue
-            // Direct mp4 hosts emit as-is; pages (forafile/vk/streamhls/...) via extractor.
             if (u.contains(".mp4") && !u.contains(".html") && !u.contains("vk.com") &&
                 !u.contains("forafile.com") && !u.contains("frdl.my") && !u.contains("upns") &&
                 !u.contains("bysetayico") && !u.contains("streamhls")
@@ -410,8 +381,6 @@ class CimaNowProvider : MainAPI() {
         Log.d(TAG, "player emitted=$emitted")
         return emitted > 0
     }
-
-    // Minter host (rm only — www is a Blogger decoy that 404s).
     private val MINTER_HOSTS = listOf(
         "https://rm.freex2line.online"
     )
@@ -454,7 +423,6 @@ class CimaNowProvider : MainAPI() {
     }
 
     private fun extractJsRedirect(body: String): String? {
-        // window.location.href = '...' / location.replace("...") / href='...'
         val pats = listOf(
             Regex("""window\.location\.(?:href|replace)\s*\(\s*["']([^"']+)["']"""),
             Regex("""window\.location\.href\s*=\s*["']([^"']+)["']"""),
@@ -485,7 +453,6 @@ class CimaNowProvider : MainAPI() {
     }
 
     private suspend fun fetchHop(url: String, referer: String, tag: String): Pair<String, String>? {
-        // Single GET per hop (the minter tarpits hammering — no prefetch).
         return try {
             val via = app.get(url, headers = browserHeaders, referer = referer,
                 interceptor = cfKiller, timeout = 15, allowRedirects = true)
@@ -502,9 +469,6 @@ class CimaNowProvider : MainAPI() {
             null
         }
     }
-
-    // One careful token attempt per host (the minter tarpits hammering):
-    // moderate timeout, cached per detail URL.
     private val tokenCache = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val tokenRefCache = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val failCache = java.util.concurrent.ConcurrentHashMap<String, Long>()
@@ -518,7 +482,6 @@ class CimaNowProvider : MainAPI() {
                 return null
             } else failCache.remove(detailUrl)
         }
-        // Same path on every minter host.
         val path = btn.substringAfter("freex2line.online", btn)
         for (host in MINTER_HOSTS) {
             val url = if (btn.contains("freex2line.online")) host + path else btn
@@ -534,7 +497,6 @@ class CimaNowProvider : MainAPI() {
                     tokenRefCache[detailUrl] = url
                     return finalUrl
                 }
-                // Direct tokenized watch URL inside body?
                 extractTokenizedWatch(body)?.let { tok ->
                     val abs = if (tok.startsWith("/")) "https://cimanow.cc$tok" else tok
                     Log.d(TAG, "minted from body [watch-url] ${abs.take(140)}")
@@ -542,7 +504,6 @@ class CimaNowProvider : MainAPI() {
                     tokenRefCache[detailUrl] = url
                     return abs
                 }
-                // Follow JS redirect (loadon -> href.li/?.../redirectingfree/)
                 var next = extractJsRedirect(body) ?: extractMetaRefresh(body)
                 var hops = 0
                 var referer = url
@@ -553,7 +514,6 @@ class CimaNowProvider : MainAPI() {
                     if (nxt.startsWith("/")) nxt = host + nxt
                     Log.d(TAG, "mint hop$hops -> ${nxt.take(200)}")
                     if (nxt.contains("redirectingfree")) redirectingFreeUrl = nxt
-                    // href.li is a hide-referrer shim: inner URL is after '?'
                     if (nxt.contains("href.li")) {
                         val inner = nxt.substringAfter("?", "").trim()
                         if (inner.startsWith("http")) {
@@ -561,7 +521,6 @@ class CimaNowProvider : MainAPI() {
                             nxt = inner
                             if (nxt.contains("redirectingfree")) redirectingFreeUrl = nxt
                         } else {
-                            // fetch href.li page itself to read its meta refresh
                             val h = fetchHop(nxt, referer, "mint hrefl $host")
                             if (h != null) {
                                 extractTokenizedWatch(h.second)?.let { tok ->
@@ -599,8 +558,6 @@ class CimaNowProvider : MainAPI() {
                     if (next.isNullOrBlank()) {
                         Log.d(TAG, "mint hops exhausted at ${finalUrl.take(140)}")
                         diagnoseChallenge(body, "mint $host")
-                        // Challenge pages set cookies via HTTP; retry the
-                        // redirectingfree endpoint once with the jar updated.
                         if (redirectingFreeUrl != null && body.length > 100000) {
                             try {
                                 Log.d(TAG, "mint retry $redirectingFreeUrl")
@@ -620,9 +577,6 @@ class CimaNowProvider : MainAPI() {
                                     Log.d(TAG, "mint retry final=${r.first.take(200)} len=${r.second.length}")
                                 }
                             } catch (_: Exception) {}
-                            // Blogger mobile view (?m=1) often skips custom-JS
-                            // gadgets: try the challenge page + redirectingfree
-                            // in mobile view.
                             try {
                                 val mobBlog = finalUrl.trimEnd('/') + "?m=1"
                                 Log.d(TAG, "mint mobile $mobBlog")
@@ -686,17 +640,10 @@ class CimaNowProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         Log.d(TAG, "loadLinks $data")
-        // Watching pages need ?token=. Flow: detail page -> freex2line watch
-        // link (base64) -> watching/?token=... -> encrypted player HTML
-        // (window["_vc12f6"]) decrypted locally with the fixed "138701n" key.
-        // Use CloudflareKiller + browser headers so real devices pass bot checks.
         try {
             var watchUrl = data
-            // ALWAYS end up on a tokenized watching URL: movies arrive here
-            // with a tokenless .../watching/ URL, episodes with a detail URL.
             if (!watchUrl.contains("token=")) {
                 try {
-                    // Detail page carries the minter (loadon) button.
                     val detailUrl = if (watchUrl.contains("/watching/")) detailOf(watchUrl) else data
                     val d0 = app.get(detailUrl, headers = browserHeaders, referer = mainUrl, interceptor = cfKiller, timeout = 15)
                     val btn = d0.document.select("ul.btns a.shine[href], a[href*=\"loadon\"]")
@@ -714,11 +661,8 @@ class CimaNowProvider : MainAPI() {
                     Log.d(TAG, "watch resolve failed: ${e.message}")
                 }
             }
-            // The minter page is the natural referer for the tokenized URL
-            // (the server may validate it).
             val detailKey = if (data.contains("/watching/")) detailOf(data) else data
             val watchReferer = tokenRefCache[detailKey] ?: mainUrl
-            // no-redirect first: capture a tokenized redirect target if the server issues one
             try {
                 val noRedir = app.get(
                     watchUrl, headers = browserHeaders, referer = watchReferer,
@@ -736,7 +680,6 @@ class CimaNowProvider : MainAPI() {
                 interceptor = cfKiller, timeout = 15, allowRedirects = true
             )
             Log.d(TAG, "final url=${res.url} len=${res.text.length}")
-            // 2) Decrypt the embedded player and emit its servers/links.
             val player = decryptPlayer(res.text)
             if (player != null) {
                 if (emitPlayerLinks(player, res.url, subtitleCallback, callback)) {
@@ -744,9 +687,6 @@ class CimaNowProvider : MainAPI() {
                 }
             } else {
                 Log.d(TAG, "no encrypted player; trying plain page servers")
-                // Watching pages (browser-verified) carry watch/download
-                // servers directly in HTML: #watch li + quality boxes.
-                // Same parser works on the full page.
                 try {
                     if (emitPlayerLinks(res.text, res.url, subtitleCallback, callback)) {
                         return true
@@ -756,7 +696,6 @@ class CimaNowProvider : MainAPI() {
                 }
             }
             val doc = res.document
-            // url -> quality
             val candidates = linkedMapOf<String, Int>()
             fun add(u: String, q: Int = Qualities.Unknown.value) {
                 var v = u.trim().replace("\\/", "/")
@@ -769,7 +708,6 @@ class CimaNowProvider : MainAPI() {
                     candidates[v] = q
                 }
             }
-            // server buttons / selects / pills (text = quality label)
             doc.select("button[data-server], button[data-src], button[data-embed], button[data-url], a.server-pill, .server-pill, select.server-select option, [data-server], [data-embed]").forEach { el ->
                 val label = el.text().trim().ifBlank { el.attr("title").trim() }.ifBlank { null }
                 val q = extractQuality(label)

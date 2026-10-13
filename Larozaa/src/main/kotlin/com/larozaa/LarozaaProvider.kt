@@ -117,7 +117,6 @@ class LarozaaProvider : MainAPI() {
     )
 
     private fun Element.toCardResult(): SearchResponse? {
-        // PHP-Melody cards: li > .thumbnail > .pm-video-thumb > a[href=video.php?vid=] > img
         val a = this.selectFirst("a[href*=\"video.php?vid=\"]") ?: return null
         val fullUrl = fixUrl(a.attr("href"))
         var title = a.attr("title").trim().takeIf { it.isNotBlank() }
@@ -205,8 +204,6 @@ class LarozaaProvider : MainAPI() {
         val recommendations = doc.select("ul.pm-ul-browse-videos li").mapNotNull { li ->
             try { li.toCardResult() } catch (_: Exception) { null }
         }.filter { it.url != url }.distinctBy { it.url }.take(24)
-
-        // Every video.php entry plays directly via its play.php page.
         Log.d(TAG, "video $finalTitle -> ${playUrl(url)}")
         return newMovieLoadResponse(finalTitle, url, TvType.Movie, playUrl(url)) {
             this.posterUrl = poster
@@ -289,17 +286,14 @@ class LarozaaProvider : MainAPI() {
             if (splitIdx == -1) return null
             val payloadStart = html.indexOf("}('", evalIdx)
             if (payloadStart == -1 || payloadStart + 3 >= splitIdx) return null
-            // Dict closing quote: walk back from .split.
             var dend = splitIdx - 1
             while (dend > payloadStart && html[dend].isWhitespace()) dend--
             if (dend <= payloadStart || html[dend] != '\'') return null
-            // Dict opening quote: first unescaped quote walking back.
             var dopen = dend - 1
             while (dopen > payloadStart) {
                 if (html[dopen] == '\'' && html[dopen - 1] != '\\') break
                 dopen--
             }
-            // Separator between payload and dict: ',RADIX,COUNT,' (payload closing quote before it).
             val argProbe = html.substring(maxOf(payloadStart + 3, dopen - 32), dopen)
             val argMatch = Regex(""",(\d+),(\d+),$""").find(argProbe)
             val payload: String
@@ -311,7 +305,6 @@ class LarozaaProvider : MainAPI() {
                 val r = argMatch.groupValues[1].toIntOrNull() ?: 36
                 radices = listOf(r) + listOf(36, 62).filter { it != r }
             } else {
-                // Legacy variant: plain ',' separator.
                 if (dopen - 2 <= payloadStart + 3 || html[dopen - 1] != ',' || html[dopen - 2] != '\'') return null
                 payload = html.substring(payloadStart + 3, dopen - 2)
                 radices = listOf(36, 62)
@@ -346,12 +339,10 @@ class LarozaaProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Same UA for page fetch and file links: some CDNs bind tokens to it.
         val pageHeaders = mapOf("User-Agent" to BROWSER_UA)
         return try {
             var res = app.get(eurl, headers = pageHeaders, referer = referer, timeout = 20)
             var body = res.text
-            // JS-redirect stubs: follow one hop.
             val redir = Regex("""window\.location\.replace\(\s*['"](https?://[^'"]+)['"]""").find(body)?.groupValues?.get(1)
                 ?: Regex("""location(?:\.href)?\s*=\s*['"](https?://[^'"]+)['"]""").find(body)?.groupValues?.get(1)
             var base = eurl
@@ -366,7 +357,6 @@ class LarozaaProvider : MainAPI() {
             var edoc = res.document
             val linkName = serverName ?: "$name Server"
             val headers = linkHeaders(base, body)
-            // VOE mirrors first: decode the real stream; skip the 10s sample file entirely.
             val voeBlob = Regex("""<script type="application/json">\["(.*?)"\]""", RegexOption.DOT_MATCHES_ALL)
                 .find(body)?.groupValues?.get(1)?.replace("\\/", "/")
             if (!voeBlob.isNullOrBlank()) {
@@ -403,7 +393,6 @@ class LarozaaProvider : MainAPI() {
                 } catch (_: Exception) {}
             }
             if (!ok) {
-                // Fallback: nested iframes inside the embed page.
                 edoc.select("iframe[src]").forEach { f ->
                     val s = f.attr("src").trim()
                     if (s.isBlank() || s.contains("youtube")) return@forEach
@@ -428,7 +417,6 @@ class LarozaaProvider : MainAPI() {
     ): Boolean {
         Log.d(TAG, "loadLinks $data")
         try {
-            // data is the play.php page (or video.php, derive play.php).
             var playPage = data
             if (data.contains("video.php?vid=")) playPage = playUrl(data)
             val doc = app.get(playPage, referer = mainUrl).document
@@ -436,7 +424,6 @@ class LarozaaProvider : MainAPI() {
             val servers = doc.select("li[data-embed-url]")
             Log.d(TAG, "servers=${servers.size}")
             val count = java.util.concurrent.atomic.AtomicInteger(0)
-            // Thread-safe emit: servers resolve in parallel for speed.
             val safeCb: (ExtractorLink) -> Unit = { link ->
                 synchronized(this) { callback(link) }
             }
@@ -476,7 +463,6 @@ class LarozaaProvider : MainAPI() {
             var emitted = count.get()
 
             if (emitted == 0) {
-                // Last resort: default player iframe.
                 doc.select(".brooks_player iframe[src], iframe[src]").forEach { f ->
                     val s = f.attr("src").trim()
                     if (s.isBlank() || s.contains("youtube")) return@forEach

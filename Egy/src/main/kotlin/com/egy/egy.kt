@@ -269,10 +269,6 @@ class EgyWatchProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         if (url.contains("/stream/show/")) {
             val res = app.get(url, headers = appHeaders).parsedSafe<MediaDetail>() ?: return null
-
-            // Rule: dataUrl must stay the API page URL — never embed the videos
-            // JSON here (its links can be raw .m3u8/.mp4, which the desktop
-            // client hijacks into yt-dlp). loadLinks() re-fetches videos.
             return newMovieLoadResponse(res.name ?: res.title ?: "بث مباشر", url, TvType.Live, url) {
                 this.posterUrl = res.posterPath
                 this.plot = res.overview
@@ -371,8 +367,6 @@ class EgyWatchProvider : MainAPI() {
             val seasonRes = app.get("$mainUrl/series/season/$seasonId/$apiKey", headers = appHeaders).parsedSafe<SeasonDetail>()
 
             seasonRes?.episodes?.forEach { ep ->
-                // Episode.data is a season pointer, never the videos JSON
-                // (same no-raw-media rule as dataUrl).
                 val epPointer = "egy:season:$seasonId:${ep.episodeNumber}"
 
                 synchronized(episodes) {
@@ -401,8 +395,6 @@ class EgyWatchProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Season pointer (see load()): re-fetch the season and pick the episode.
-        // Legacy cached cards may still carry videos-JSON: keep that branch.
         val videos = if (data.startsWith("egy:season:")) {
             val parts = data.removePrefix("egy:season:").split(":")
             val seasonId = parts.getOrNull(0)?.trim()

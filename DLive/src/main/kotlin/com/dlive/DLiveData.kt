@@ -1,6 +1,4 @@
 package com.dlive
-
-// Auto-generated from dlive.sx/24-7-channels.php (879 channels, 18+ excluded).
 internal data class DCh(val id: String, val name: String, val group: String)
 
 internal val DCHANNELS = listOf(

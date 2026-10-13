@@ -20,11 +20,6 @@ class MovyProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     private val TAG = "Movy"
-
-    // Stream backend (reverse-engineered from the web player bundle):
-    // GET {origin}/seed?mediaId={tmdbId} -> {seed, ttlMs}
-    // GET {origin}/{city}/sources?...&enc=2&seed={seed} -> ENCRYPTED blob,
-    // decoded with the custom cipher below (magic "mvm1").
     private val streamOrigin = "https://api.wecollege.net"
     private val cities = listOf("miami", "boise", "seattle")
 
@@ -72,9 +67,6 @@ class MovyProvider : MainAPI() {
                 val c = (0x9E3779B9L * (ctr + 1).toLong()) and MASK
                 ctr++
                 val sv = (r xor c) and MASK
-                // NOTE: `l in <61-entry array>` is only true for slots filled
-                // during setup (JS `in` on a sparse array) — verified against
-                // a live response that only the xor-half applies here.
                 val i = if (exists) 0xFFFFFFFFL else 0L
                 val b = ((acc0 xor sv) or (acc0 and sv and i)) and MASK
                 val b2 = (u((b + acc0) and MASK, (31 and l)) xor u(acc0, (31 and (l * 7)))) and MASK
@@ -122,8 +114,6 @@ class MovyProvider : MainAPI() {
             } catch (_: Throwable) { null }
         }
     }
-
-    // Seed cache mirroring the web player (origin|mediaId -> seed, expiry).
     private val seedCache = mutableMapOf<String, Pair<String, Long>>()
 
     private suspend fun fetchSeed(mediaId: Int): String? {
@@ -193,7 +183,6 @@ class MovyProvider : MainAPI() {
                     null
                 }
             } catch (e: Throwable) {
-                // 401 = stale seed: drop it and retry once with a fresh one.
                 Log.d(TAG, "$city attempt ${attempt + 1} failed: ${e.message}")
                 synchronized(seedCache) { seedCache.remove("$streamOrigin|$mediaId") }
                 seed = fetchSeed(mediaId) ?: return null
@@ -210,8 +199,6 @@ class MovyProvider : MainAPI() {
         if (digits != null && digits in 144..4320) return digits
         return Qualities.Unknown.value
     }
-
-    // ---------- Catalogue (SSR HTML) ----------
 
     override val mainPage = mainPageOf(
         "$mainUrl/browse/movie" to "Movies",
@@ -254,7 +241,6 @@ class MovyProvider : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Plain browse pages are server-rendered grids (page>1 untested, best-effort).
         var url = request.data
         if (page > 1) url += if (url.contains("?")) "&page=$page" else "?page=$page"
         Log.d(TAG, "getMainPage ${request.name} -> $url")
@@ -285,8 +271,6 @@ class MovyProvider : MainAPI() {
         }
         return out.distinctBy { it.url }
     }
-
-    // ---------- Details (SSR __NEXT_DATA__) ----------
 
     data class SeasonEntry(
         @JsonProperty("season_number") val seasonNumber: Int? = null,
@@ -371,8 +355,6 @@ class MovyProvider : MainAPI() {
         }
     }
 
-    // ---------- Streams ----------
-
     private suspend fun loadCityLinks(
         city: String,
         tmdbId: Int,
@@ -426,7 +408,6 @@ class MovyProvider : MainAPI() {
                 } catch (_: Exception) {}
             }
         }
-        // Subtitles served alongside the sources.
         for (sub in (resp.subtitles ?: emptyList())) {
             try {
                 val u = (sub["url"] as? String)?.trim()?.takeIf { it.startsWith("http") }
@@ -452,7 +433,6 @@ class MovyProvider : MainAPI() {
         try {
             val ep = Regex("""/watch/tv/(\d+)/(\d+)/(\d+)""").find(data)
             val mid = Regex("""/watch/movie/(\d+)""").find(data)?.groupValues?.get(1)?.toIntOrNull()
-            // Resolve the catalogue page to get tmdb/imdb/title/year.
             val pageUrl = when {
                 ep != null -> "$mainUrl/tv/${ep.groupValues[1]}"
                 mid != null -> "$mainUrl/movie/$mid"

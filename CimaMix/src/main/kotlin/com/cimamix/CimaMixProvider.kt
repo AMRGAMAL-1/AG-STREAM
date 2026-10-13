@@ -51,15 +51,12 @@ class CimaMixProvider : MainAPI() {
     }
 
     private fun Element.toCardResult(): SearchResponse? {
-        // Cards: <a class="card-hover" href="/movie/...|/show/...|/watch/...|/watch-show/...">
-        // (+ latest-episodes lep-card style: <a class="lep-card" href="/watch-show/...">)
         val href = this.attr("href").takeIf { it.isNotBlank() } ?: return null
         if (!href.contains("/movie/") && !href.contains("/show/") && !href.contains("/watch/") && !href.contains("/watch-show/") && !href.contains("/episode")) return null
         val fullUrl = fixUrl(href)
 
         var title = this.selectFirst("h3.poster-title")?.text()?.trim()
         if (title.isNullOrBlank()) {
-            // latest-episodes lep-card: main title + episode meta
             title = this.selectFirst(".lep-title-main")?.text()?.trim()?.let { main ->
                 val meta = this.selectFirst(".lep-title-meta")?.text()?.trim()
                 if (!meta.isNullOrBlank()) "$main ($meta)" else main
@@ -92,8 +89,6 @@ class CimaMixProvider : MainAPI() {
 
         val year = Regex("""(19\d{2}|20\d{2})""").find(href)?.groupValues?.get(1)?.toIntOrNull()
             ?: Regex("""(19\d{2}|20\d{2})""").find(this.text())?.groupValues?.get(1)?.toIntOrNull()
-
-        // /watch/ + /watch-show/ links play directly: treat as Movie entries.
         val isSeries = (href.contains("/show/") || href.contains("/episode")) && !href.contains("/watch/") && !href.contains("/watch-show/")
         val isMovie = !isSeries
         return if (isMovie) {
@@ -111,14 +106,12 @@ class CimaMixProvider : MainAPI() {
 
     private fun pagedUrl(base: String, page: Int): String {
         if (page <= 1) return base
-        // Site uses ?pg=N  (seen: /movies?pg=2)
         return if (base.contains("?")) "$base&pg=$page" else "$base?pg=$page"
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = pagedUrl(request.data, page)
         Log.d(TAG, "getMainPage ${request.name} -> $url")
-        // The site throttles aggressively: retry once after a short pause.
         var doc = try {
             app.get(url, referer = mainUrl, interceptor = cfKiller, timeout = 25).document
         } catch (e: Exception) {
@@ -126,12 +119,10 @@ class CimaMixProvider : MainAPI() {
             kotlinx.coroutines.delay(1500)
             app.get(url, referer = mainUrl, interceptor = cfKiller, timeout = 25).document
         }
-        // Primary: card anchors (poster-card + latest-episodes lep-card styles)
         var items = doc.select("a.card-hover, a.le-card, a.lep-card").mapNotNull {
             try { it.toCardResult() } catch (_: Exception) { null }
         }
         if (items.isEmpty()) {
-            // Fallback: any movie/show/watch links (img OR meaningful text)
             items = doc.select("a[href*=\"/movie/\"], a[href*=\"/show/\"], a[href*=\"/watch/\"], a[href*=\"/watch-show/\"]").mapNotNull { a ->
                 try {
                     val hasImg = a.selectFirst("img") != null
@@ -167,8 +158,6 @@ class CimaMixProvider : MainAPI() {
                 }
                 Log.d(TAG, "search $url -> ${items.size}")
                 if (items.isNotEmpty()) return items
-                // if page loaded but no results, don't try next candidate blindly?
-                // still try next candidate in case route differs
             } catch (e: Exception) {
                 Log.d(TAG, "search $url failed: ${e.message}")
             }
@@ -187,14 +176,10 @@ class CimaMixProvider : MainAPI() {
 
         val isMovie = url.contains("/movie/")
         val isShow = url.contains("/show/")
-
-        // ---- common meta ----
         val ogTitle = doc.selectFirst("meta[property=og:title]")?.attr("content")?.trim()
         val ogImage = doc.selectFirst("meta[property=og:image]")?.attr("content")?.trim()
         val ogDesc = doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
             ?: doc.selectFirst("meta[name=description]")?.attr("content")?.trim()
-
-        // h1 on detail pages: <h1><span ...>مشاهدة فيلم ...</span><span class="block text-3xl ...">TITLE</span></h1>
         var title: String? = doc.select("h1 span.block").lastOrNull()?.text()?.trim()
         if (title.isNullOrBlank()) title = doc.selectFirst("h1")?.text()?.trim()
         if (title.isNullOrBlank()) title = ogTitle?.substringBefore("—")?.substringBefore("|")?.trim()
@@ -210,23 +195,16 @@ class CimaMixProvider : MainAPI() {
         val tags = doc.select("a[href*=\"/genres?genre=\"]").map { it.text().trim() }.filter { it.isNotBlank() }.distinct()
         val ratingText = doc.selectFirst(".netflix-rating-text")?.text()?.trim()
         val score = ratingText?.toFloatOrNull()?.let { Score.from10(it) }
-
-        // recommendations: similar movies/shows on detail page
         val recommendations = doc.select("a[href*=\"/movie/\"], a[href*=\"/show/\"]").mapNotNull { a ->
             if (a.selectFirst("img") == null) return@mapNotNull null
             val href = a.attr("href")
-            // skip self + non-content links
             if (href.isBlank() || href == url || !href.contains("/movie/") && !href.contains("/show/")) return@mapNotNull null
-            // skip if same as current page id
             try { a.toCardResult() } catch (_: Exception) { null }
         }.distinctBy { it.url }.take(24)
 
         if (isMovie || (!isShow && !url.contains("/watch/") && doc.select("a[href*=\"/watch/\"]").isNotEmpty() && !doc.html().contains("المواسم والحلقات"))) {
             var watchUrl: String? = doc.selectFirst("a[href*=\"/watch/\"]")?.attr("href")?.let { fixUrl(it) }
             if (watchUrl.isNullOrBlank()) {
-                // og:video:url may be a RAW media file (.mp4/.m3u8): never use it
-                // as dataUrl — the desktop client hijacks raw media links into
-                // its yt-dlp resolver (fake "playlist <date>" series, 0 episodes).
                 val ogVideo = doc.selectFirst("meta[property=\"og:video:url\"]")?.attr("content")?.let { fixUrl(it) }
                 if (!ogVideo.isNullOrBlank() && !ogVideo.lowercase().contains(".m3u8") && !ogVideo.lowercase().contains(".mp4")) {
                     watchUrl = ogVideo
@@ -245,8 +223,6 @@ class CimaMixProvider : MainAPI() {
                 this.recommendations = recommendations.ifEmpty { null }
             }
         }
-
-        // ---- Direct /watch/ + /watch-show/ pages (e.g. from latest-episodes): playable as-is ----
         if (url.contains("/watch/") || url.contains("/watch-show/")) {
             Log.d(TAG, "direct watch $finalTitle")
             return newMovieLoadResponse(finalTitle, url, TvType.Movie, url) {
@@ -258,11 +234,6 @@ class CimaMixProvider : MainAPI() {
                 this.recommendations = recommendations.ifEmpty { null }
             }
         }
-
-        // ---- TV show ----
-        // Episodes: /watch-show/<id>/sN/eM grid cards, /watch/ + /episode links,
-        // or any anchor with episode-like text/href.
-        // We parse defensively: all anchors pointing to watch/episode pages inside content.
         val navMarks = listOf("/movies", "/tvshows", "/genres", "/actor", "/collection", "/search", "/login", "/register", "/trending", "/top10", "/latest-", "/live-", "/programs", "/plays", "/random", "/year-", "/platforms", "/map", "/actors", "/article")
         val seRe = Regex("""/s(\d+)/e(\d+)""")
         val episodeAnchors = doc.select("a[href]").filter { a ->
@@ -275,13 +246,9 @@ class CimaMixProvider : MainAPI() {
         }
 
         val episodes = mutableListOf<Episode>()
-        // Try to detect season number from surrounding headings
-        // Strategy: walk through document sections; for each anchor, look backwards for season header text.
-        // /watch-show/ links carry sN/eM in the href itself — prefer that.
         for (a in episodeAnchors) {
             val href = fixUrl(a.attr("href"))
             var epText = a.text().trim().ifBlank { a.attr("title").trim() }
-            // episode number from /sN/eM href, "الحلقة 12", or trailing number
             var epNum = seRe.find(a.attr("href"))?.groupValues?.get(2)?.toIntOrNull()
             var seasonNum: Int? = seRe.find(a.attr("href"))?.groupValues?.get(1)?.toIntOrNull()
             if (epNum == null) {
@@ -290,13 +257,11 @@ class CimaMixProvider : MainAPI() {
             if (epNum == null) {
                 epNum = Regex("""\b(\d{1,4})\b""").findAll(epText).lastOrNull()?.groupValues?.get(1)?.toIntOrNull()
             }
-            // season: search parent/previous siblings for "الموسم"
             if (seasonNum == null) {
                 var parent = a.parent()
                 var hops = 0
                 while (parent != null && hops < 6 && seasonNum == null) {
                     val sibText = parent.text()
-                    // Arabic ordinal seasons: الأول=1 الثاني=2 ... or "موسم 2" / "الموسم 2"
                     seasonNum = Regex("""[Mm]وسم\s*(\d+)""").find(sibText)?.groupValues?.get(1)?.toIntOrNull()
                         ?: arabicSeasonToNumber(sibText)
                     parent = parent.parent()
@@ -311,9 +276,6 @@ class CimaMixProvider : MainAPI() {
                 this.posterUrl = poster
             })
         }
-
-        // Deduplicate; if nothing found, the show page itself may list episodes without links yet
-        // (JS-loaded). Return at least empty list so UI shows show info.
         val distinct = episodes.distinctBy { it.data }.sortedWith(compareBy({ it.season }, { it.episode }))
         Log.d(TAG, "show $finalTitle -> ${distinct.size} episodes")
 
@@ -328,7 +290,6 @@ class CimaMixProvider : MainAPI() {
     }
 
     private fun arabicSeasonToNumber(text: String): Int? {
-        // "الموسم الأول", "الموسم الثاني", ...
         val ordinals = mapOf(
             "الأول" to 1, "الاول" to 1,
             "الثاني" to 2, "الثالث" to 3, "الرابع" to 4, "الخامس" to 5,
@@ -359,13 +320,6 @@ class CimaMixProvider : MainAPI() {
             else -> Qualities.Unknown.value
         }
     }
-
-    // ---------- CimaMix Player API (reverse-engineered from watch page) ----------
-    // GET /api/player?type=movie|episode&id=<contentId>&ticket=<ticket>
-    // (fallback /?page=api-player&...) with Accept: application/json.
-    // Response: {ok, data:{links:[{server_name,embed_url,mirror_fallbacks}], downloads:[...]}}
-    // or {ok, sealed:{v:1, iv, tag, ct}} with AES-GCM (key = SHA256(salt|papi-v1|ticket),
-    // salt = window.__PLAYER_API_SALT from the watch page, may rotate).
     private val PLAYER_SALT_FALLBACK = "dd4a8e5b0d57515d40def6b818fd7e4e"
 
     data class CmxLink(
@@ -437,7 +391,6 @@ class CimaMixProvider : MainAPI() {
                 if (url != null) {
                     out.add(CmxLink(serverName = name, embedUrl = url, mirrorFallbacks = mirrors))
                 } else {
-                    // descend one level (e.g. {data:{links:[...]}})
                     node.fields().forEach { (_, v) ->
                         if (v.isArray || v.isObject) harvest(v)
                     }
@@ -446,7 +399,6 @@ class CimaMixProvider : MainAPI() {
             if (root.isArray) {
                 harvest(root)
             } else {
-                // try known containers first, then whole tree
                 var found = false
                 for (k in listOf("links", "servers", "sources", "streams", "embeds", "videos", "data")) {
                     val n = root.get(k)
@@ -485,8 +437,6 @@ class CimaMixProvider : MainAPI() {
             val iv = b64url(sealed.iv ?: return null)
             val ct = b64url(sealed.ct)
             val tag = sealed.tag?.takeIf { it.isNotBlank() }?.let { b64url(it) } ?: ByteArray(0)
-            // Variant A (matches site JS): buffer = ct + tag
-            // Variant B: tag already appended inside ct (use ct alone)
             val candidates = if (tag.isNotEmpty()) listOf(ct + tag, ct) else listOf(ct)
             for (buf in candidates) {
                 try {
@@ -496,7 +446,6 @@ class CimaMixProvider : MainAPI() {
                     Log.d(TAG, "decrypt ok len=${plain.length}")
                     val parsed = try { AppUtils.parseJson<CmxPlayerData>(plain) } catch (_: Exception) { null }
                     if (parsed?.links.isNullOrEmpty()) {
-                        // strict shape missed: fall back to flexible hunt (also logs shape)
                         val flex = extractLinksFlexible(plain)
                         if (!flex.isNullOrEmpty()) return CmxPlayerData(links = flex)
                     }
@@ -555,13 +504,6 @@ class CimaMixProvider : MainAPI() {
             return false
         }
     }
-
-    // ---------- Vidrock (vidrock.net) direct API ----------
-    // Embed pages are a JS SPA stub (~1254 bytes) with no harvestable links.
-    // Current API (verified): GET https://vidrock.net/api/movie/<tmdbId>
-    //   | /api/tv/<tmdbId>/<season>/<episode> with PLAIN ids; response values
-    //   are AES-256-GCM encrypted (iv = first 12 bytes, tag = last 16 bytes,
-    //   base64url). "Unavailable" plaintext means no source for that slot.
     private val VIDROCK_GCM_KEY_HEX =
         "7f3e9c2a8b5d1f4e6a9c3b7d2e5f8a1c4b6d9e2f5a8c1b4d7e9f2a5c8b1d4e7f"
 
@@ -688,7 +630,6 @@ class CimaMixProvider : MainAPI() {
             val api = if (isTv) "https://vidrock.net/api/tv/$tmdb/$season/$episode"
             else "https://vidrock.net/api/movie/$tmdb"
             Log.d(TAG, "vidrock api $itemId")
-            // vidrock.net is often slow/flaky: bounded retry instead of one 20s stall.
             var txt: String? = null
             for (attempt in 1..2) {
                 try {
@@ -773,14 +714,11 @@ class CimaMixProvider : MainAPI() {
         allowGo: Boolean = true,
         label: String? = null
     ): Boolean {
-        // Custom resolvers first (hosts loadExtractor doesn't know).
         if (resolveVidara(eurl, subtitleCallback, callback)) return true
         if (resolveDailymotion(eurl, referer, subtitleCallback, callback, label)) return true
-        // Internal redirector /go/<token> -> real embed host.
         if (allowGo && isGoLink(eurl)) {
             if (resolveGo(eurl, referer, quality, subtitleCallback, callback, label)) return true
         }
-        // Packed/slow hosts: harvest files directly instead of waiting on app extractors.
         try {
             val host = Regex("""https?://([^/]+)""").find(eurl)?.groupValues?.get(1)?.lowercase() ?: ""
             if (HARVEST_FIRST.any { host.contains(it) }) {
@@ -827,17 +765,14 @@ class CimaMixProvider : MainAPI() {
             if (splitIdx == -1) return null
             val payloadStart = html.indexOf("}('", evalIdx)
             if (payloadStart == -1 || payloadStart + 3 >= splitIdx) return null
-            // Dict closing quote: walk back from .split.
             var dend = splitIdx - 1
             while (dend > payloadStart && html[dend].isWhitespace()) dend--
             if (dend <= payloadStart || html[dend] != '\'') return null
-            // Dict opening quote: first unescaped quote walking back.
             var dopen = dend - 1
             while (dopen > payloadStart) {
                 if (html[dopen] == '\'' && html[dopen - 1] != '\\') break
                 dopen--
             }
-            // Separator between payload and dict: ',RADIX,COUNT,' (payload closing quote before it).
             val argProbe = html.substring(maxOf(payloadStart + 3, dopen - 32), dopen)
             val argMatch = Regex(""",(\d+),(\d+),$""").find(argProbe)
             val payload: String
@@ -849,7 +784,6 @@ class CimaMixProvider : MainAPI() {
                 val r = argMatch.groupValues[1].toIntOrNull() ?: 36
                 radices = listOf(r) + listOf(36, 62).filter { it != r }
             } else {
-                // Legacy variant: plain ',' separator.
                 if (dopen - 2 <= payloadStart + 3 || html[dopen - 1] != ',' || html[dopen - 2] != '\'') return null
                 payload = html.substring(payloadStart + 3, dopen - 2)
                 radices = listOf(36, 62)
@@ -1027,7 +961,6 @@ class CimaMixProvider : MainAPI() {
                     ok = true
                     continue
                 }
-                // Embed page the app extractors don't know: harvest it ourselves.
                 if (harvestEmbed(u, eurl, quality, subtitleCallback, callback, label)) ok = true
             }
         } catch (e: Exception) {
@@ -1073,12 +1006,10 @@ class CimaMixProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit,
         label: String? = null
     ): Boolean {
-        // Same UA for page fetch and file links: some CDNs bind tokens to it.
         val pageHeaders = mapOf("User-Agent" to BROWSER_UA)
         try {
             val res = app.get(eurl, headers = pageHeaders, referer = referer, interceptor = cfKiller, timeout = 20)
             if (harvestPage(res.text, res.document, eurl, quality, subtitleCallback, callback, label)) return true
-            // JS-redirect stub: follow one hop, then harvest.
             val redir = jsRedirect(res.text, eurl)
             if (redir != null) {
                 Log.d(TAG, "harvest redirect ${redir.take(100)}")
@@ -1111,7 +1042,6 @@ class CimaMixProvider : MainAPI() {
         }
         val linkName = label?.takeIf { it.isNotBlank() }?.let { "$name $it" } ?: "$name Server"
         val headers = linkHeaders(base, body)
-        // VOE mirrors first: decode the real stream; skip the 10s sample file entirely.
         val voeBlob = Regex("""<script type="application/json">\["(.*?)"\]""", RegexOption.DOT_MATCHES_ALL)
             .find(body)?.groupValues?.get(1)?.replace("\\/", "/")
         if (!voeBlob.isNullOrBlank()) {
@@ -1177,9 +1107,6 @@ class CimaMixProvider : MainAPI() {
     ): Boolean {
         var ok = false
         val enc = { s: String -> java.net.URLEncoder.encode(s, "UTF-8") }
-        // Mirror the browser exactly: type, id, episode_id, season, episode, ticket.
-        // Shows REQUIRE episode_id/season/episode — without them the API returns
-        // a single fallback server (Vidrock) instead of the full 8-9 server list.
         val qBase = StringBuilder("type=${enc(type)}&id=${enc(contentId)}")
         if (!episodeId.isNullOrBlank() && episodeId != "0") qBase.append("&episode_id=${enc(episodeId)}")
         if (!season.isNullOrBlank()) qBase.append("&season=${enc(season)}")
@@ -1218,7 +1145,6 @@ class CimaMixProvider : MainAPI() {
                 val safeSub: (SubtitleFile) -> Unit = { sub ->
                     synchronized(this) { subtitleCallback(sub) }
                 }
-                // Resolve servers in parallel: sequential fetches take minutes.
                 coroutineScope {
                     pdata.links?.map { lnk ->
                         async {
@@ -1242,7 +1168,6 @@ class CimaMixProvider : MainAPI() {
                     }?.awaitAll()
                 }
                 if (okRef.get()) ok = true
-                // downloads: direct links when present (watch + download servers).
                 val skipExt = listOf(".jpg", ".jpeg", ".png", ".gif", ".webp", ".css", ".js", ".srt", ".vtt", ".ass", ".ico", ".svg")
                 pdata.downloads?.let { dls ->
                     dls.forEach { m ->
@@ -1262,7 +1187,6 @@ class CimaMixProvider : MainAPI() {
                 }
                 if (okRef.get()) ok = true
                 if (ok) return true
-                // Try the mirror endpoint too: it can return a different server set.
             } catch (e: Exception) {
                 Log.d(TAG, "player API $u failed: ${e.message}")
             }
@@ -1278,7 +1202,6 @@ class CimaMixProvider : MainAPI() {
     ): Boolean {
         Log.d(TAG, "loadLinks $data")
         try {
-            // Resolve to the /watch/ or /watch-show/ page first (episodes may pass detail urls).
             var watchUrl = data
             var html = ""
             if (!data.contains("/watch/") && !data.contains("/watch-show/")) {
@@ -1295,25 +1218,17 @@ class CimaMixProvider : MainAPI() {
             val wdoc = app.get(watchUrl, referer = mainUrl, interceptor = cfKiller)
             if (html.isBlank()) html = wdoc.text
             val doc = wdoc.document
-
-            // ---- 0) Vidrock direct API first: one fast request, independent of
-            // the player-API early-return below (which would otherwise skip it
-            // whenever any embed server yields a link).
             try {
                 resolveVidrock(watchUrl, data, subtitleCallback, callback)
             } catch (e: Exception) {
                 Log.d(TAG, "vidrock path failed: ${e.message}")
             }
-
-            // ---- 1) Official Player API (ticket + contentId from watch page) ----
             try {
                 val ticket = Regex("""playerTicket["']?\s*[:=]\s*["']([^"']+)""").find(html)?.groupValues?.get(1)
                 val cid = Regex("""contentId["']?\s*[:=]\s*["']?(\d+)""").find(html)?.groupValues?.get(1)
                     ?: Regex("""\bcontent_id["']?\s*[:=]\s*["']?(\d+)""").find(html)?.groupValues?.get(1)
                 val ptype = Regex("""fetchPlayer\(\{\s*type:\s*'(\w+)'""").find(html)?.groupValues?.get(1)
                     ?: if (watchUrl.contains("/watch-show/") || watchUrl.contains("/episode") || html.contains("season")) "show" else "movie"
-                // Episode-scoped request (matches browser fetchPlayer): without
-                // episode_id/season/episode the API returns 1 fallback server only.
                 val seUrl = Regex("""/s(\d+)/e(\d+)""").find(watchUrl)
                 var epId = Regex("""activeEpId\s*:\s*(\d+)""").find(html)?.groupValues?.get(1)
                     ?: Regex("""episode_id\s*[:=]\s*["']?(\d+)""").find(html)?.groupValues?.get(1)
@@ -1322,7 +1237,6 @@ class CimaMixProvider : MainAPI() {
                 var epNum = seUrl?.groupValues?.get(2)
                     ?: Regex("""fallbackEpisode\s*:\s*(\d+)""").find(html)?.groupValues?.get(1)
                 if (epId.isNullOrBlank() || epId == "0") {
-                    // Fall back to episodesBySeason JSON: {"909":[{"id":21261,"season_number":1,...}]}
                     try {
                         val epJson = Regex(""""id"\s*:\s*(\d+)\s*,\s*"season_id"\s*:\s*\d+\s*,\s*"season_number"\s*:\s*(\d+)[^}]*?"episode_number"\s*:\s*(\d+)""")
                             .findAll(html).toList()
@@ -1351,8 +1265,6 @@ class CimaMixProvider : MainAPI() {
             } catch (e: Exception) {
                 Log.d(TAG, "player API path failed: ${e.message}")
             }
-
-            // url -> quality/server label
             val candidates = linkedMapOf<String, Pair<Int, String?>>()
             fun addCandidate(url: String, quality: Int = Qualities.Unknown.value, label: String? = null) {
                 val u = cleanUrl(url)
@@ -1363,15 +1275,12 @@ class CimaMixProvider : MainAPI() {
                     candidates[u] = Pair(quality, label ?: prev?.second)
                 }
             }
-
-            // 1) iframes (embed player, excluding youtube trailer)
             doc.select("iframe[src]").forEach { f ->
                 val src = f.attr("src").trim()
                 if (src.startsWith("//")) addCandidate("https:$src")
                 else if (src.startsWith("http")) addCandidate(src)
                 else if (src.startsWith("/")) addCandidate(fixUrl(src))
             }
-            // 2) meta players
             listOf(
                 "meta[property=\"og:video:secure_url\"]",
                 "meta[property=\"og:video:url\"]",
@@ -1381,7 +1290,6 @@ class CimaMixProvider : MainAPI() {
                     addCandidate(if (it.startsWith("//")) "https:$it" else it)
                 }
             }
-            // 3) server pills / selects (keep their text as quality label)
             doc.select(".server-pill, button.server-pill, a.server-pill, .server-select option, select.server-select option").forEach { el ->
                 val label = el.text().trim().ifBlank { el.attr("title").trim() }.ifBlank { null }
                 val q = extractQuality(label)
@@ -1400,7 +1308,6 @@ class CimaMixProvider : MainAPI() {
                     else if (!v.isNullOrBlank() && v.startsWith("/embed/")) addCandidate(fixUrl(v), q, label)
                 }
             }
-            // 4) scripts (unpacked first, like TukTuk) containing embed links or m3u8/mp4
             val rawScripts = doc.select("script").joinToString("\n") { it.data() + "\n" + it.html() }
             var scripts = try { JsUnpacker(rawScripts).unpack() ?: rawScripts } catch (_: Exception) { rawScripts }
             unpackXUpload(rawScripts)?.let { scripts += "\n$it" }
@@ -1414,7 +1321,6 @@ class CimaMixProvider : MainAPI() {
             }
             Regex("""["'](https?://[^"']+)["']""").findAll(scripts).forEach { m ->
                 val u = cleanUrl(m.groupValues[1])
-                // keep only plausible video hosts, skip analytics/ads
                 if (u.contains("/embed/") || u.contains("filemoon") || u.contains("voe") || u.contains("mixdrop") ||
                     u.contains("uqload") || u.contains("dood") || u.contains("streamtape") || u.contains("vidmoly") ||
                     u.contains("vidara") || u.contains("gosbagotui") ||
@@ -1433,7 +1339,6 @@ class CimaMixProvider : MainAPI() {
                 val quality = meta.first
                 try {
                     if (c.contains("/embed/")) {
-                        // open embed page to find real iframe
                         Log.d(TAG, "resolving embed $c")
                         val edoc = app.get(c, referer = watchUrl).document
                         val inner = linkedSetOf<String>()
@@ -1459,7 +1364,6 @@ class CimaMixProvider : MainAPI() {
                             else if (harvestEmbed(u, c, quality, subtitleCallback, callback, meta.second)) emitted++
                         }
                         if (inner.isEmpty()) {
-                            // fallback: try embed url directly as extractor
                             if (emitUrl(c, watchUrl, quality, subtitleCallback, callback, label = meta.second)) emitted++
                         }
                     } else if (c.startsWith("http")) {

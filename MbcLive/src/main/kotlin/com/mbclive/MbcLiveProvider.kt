@@ -12,11 +12,6 @@ class MbcLiveProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Live)
 
     private val TAG = "MbcLive"
-
-    // Free clear-HLS streams (verified). NOTE: shahid.mbc.net website itself
-    // uses Widevine DRM which Cloudstream cannot play, so this provider uses
-    // the free HLS endpoints instead of scraping the site.
-    // Logos: Wikimedia Commons (verified).
     private data class Ch(val name: String, val group: String, val slug: String, val url: String, val logo: String?)
 
     private val W = "https://commons.wikimedia.org/wiki/Special:FilePath/"
@@ -41,9 +36,6 @@ class MbcLiveProvider : MainAPI() {
         Ch("MBC FM", "راديو", "mbc-fm", "https://shd-gcp-live.edgenextcdn.net/live/bitmovin-mbc-fm/3f36f7db6086acf058dc51681c87f8ad/index.m3u8", logo("MBC%20FM%20Logo.svg")),
         Ch("Panorama FM - بانوراما", "راديو", "panorama-fm", "https://shd-gcp-live.edgenextcdn.net/live/bitmovin-panorama-fm/ea22f3856a1b772f793c43eb5d1c0636/index.m3u8", logo("Panorama%20FM%20Logo.svg")),
     )
-
-    // Cards must NOT carry raw .m3u8 URLs: the desktop client hijacks them
-    // into its yt-dlp resolver (fake "playlist <date>" series, 0 episodes).
     private fun slugUrl(slug: String) = "$mainUrl/live/$slug"
 
     private val streamHeaders = mapOf(
