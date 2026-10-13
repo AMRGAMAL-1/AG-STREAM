@@ -2,12 +2,16 @@ package com.cimanow
 
 import android.util.Base64
 import android.util.Log
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 import java.net.URLDecoder
 import java.net.URLEncoder
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class CimaNowProvider : MainAPI() {
     override var mainUrl = "https://cimanow.cc"
@@ -491,19 +495,246 @@ class CimaNowProvider : MainAPI() {
             null
         }
     }
+    // ---------- Radical fix helpers: title cleaning + trap solver + Vidrock fallback ----------
+
+    /** Strip Arabic wrappers (فيلم/مسلسل/مترجم/مدبلج/...) so external lookups use the English core. */
+    private fun cleanEnglishTitle(raw: String): Pair<String, Int?> {
+        var s = raw.trim()
+        val year = Regex("""(19\d{2}|20\d{2})""").find(s)?.groupValues?.get(1)?.toIntOrNull()
+        s = s.replace(Regex("""^(فيلم|مسلسل|مسرحية|برنامج|الحلقة|حلقة)\s+"""), "")
+        s = s.replace(Regex("""\s*(مترجم|مترجمة|مترجمه|مدبلج|مدبلجة|مدبلجه|مصري|مصرية|مصرى|بالعربية|للعربية|اون\s*لاين|اونلاين|بجودة\s*عالية|بجوده\s*عاليه|كامل|كاملة|HD|FHD|CAM|TS|2026|رمضان)\s*""", RegexOption.IGNORE_CASE), " ")
+        s = s.replace(Regex("""[|–—_/:]+"""), " ")
+        s = s.replace(Regex("""\s*(19\d{2}|20\d{2})\s*"""), " ")
+        s = s.replace(Regex("""\s+"""), " ").trim(' ', '-', ':', '|')
+        return s to year
+    }
+
+    private fun normTitle(s: String): String {
+        return s.lowercase().replace(Regex("[^a-z0-9]+"), " ").replace(Regex("\\s+"), " ").trim()
+    }
+
+    private data class SolvedTrap(val finalHtml: String, val pigUrl: String?)
+
+    /**
+     * Pure-JVM solver for freex2line stage-1 trap pages (no WebView/JS engine needed).
+     * Page contains: trap div (w/h in style) + b64 chunks array + `var e=[...]; var k=N;`
+     * d = e[i] xor k  ->  JS holding `kStr = (w*h)+OFFSET`; final = b64decode(chunks) xor kStr.
+     */
+    private fun solveTrapStage1(body: String): SolvedTrap? {
+        try {
+            val trap = Regex("""<div id='trap_[^']+'[^>]*style='[^']*width:(\d+)px[^']*height:(\d+)px""").find(body) ?: return null
+            val w = trap.groupValues[1].toIntOrNull() ?: return null
+            val h = trap.groupValues[2].toIntOrNull() ?: return null
+            val arrMatch = Regex("""window\["([A-Za-z0-9]+)"\] = \[(.*?)\];""", RegexOption.DOT_MATCHES_ALL).find(body) ?: return null
+            val chunks = Regex(""""([^"]{20,})"""").findAll(arrMatch.groupValues[2]).map { it.groupValues[1] }.toList()
+            if (chunks.isEmpty()) return null
+            val eMatch = Regex("""var e = \[(.*?)\];\s*var k = (\d+);""", RegexOption.DOT_MATCHES_ALL).find(body) ?: return null
+            val eArr = eMatch.groupValues[1].split(",").mapNotNull { it.trim().toIntOrNull() }
+            val k = eMatch.groupValues[2].toIntOrNull() ?: return null
+            if (eArr.isEmpty()) return null
+            val d = String(CharArray(eArr.size) { i -> (eArr[i] xor k).toChar() })
+            val off = Regex("""\(\s*w\s*\*\s*h\s*\)\s*\+\s*(\d+)""").find(d)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+            val kStr = (w * h + off).toString()
+            val decBytes = try { Base64.decode(chunks.joinToString(""), Base64.DEFAULT) } catch (_: Exception) { return null }
+            val decStr = String(decBytes, Charsets.ISO_8859_1)
+            val out = ByteArray(decStr.length) { i -> (decStr[i].code xor kStr[i % kStr.length].code).toByte() }
+            val finalHtml = String(out, Charsets.UTF_8)
+            if (!finalHtml.contains("downloadbtn")) return null
+            val pig = Regex("""<a[^>]+id=["']downloadbtn["'][^>]+href=["']([^"']+)["']""").find(finalHtml)?.groupValues?.get(1)
+            Log.d(TAG, "trap solved w=$w h=$h off=$off finalLen=${finalHtml.length} pig=${pig?.take(80)}")
+            return SolvedTrap(finalHtml, pig?.takeIf { it.startsWith("http") })
+        } catch (e: Exception) {
+            Log.d(TAG, "trap solve failed: ${e.message}")
+            return null
+        }
+    }
+
+    // ---------- Vidrock fallback (bypasses freex2line/countdown/Cloudflare entirely) ----------
+    private val vidMapper = ObjectMapper()
+    private val VIDROCK_GCM_KEY_HEX =
+        "7f3e9c2a8b5d1f4e6a9c3b7d2e5f8a1c4b6d9e2f5a8c1b4d7e9f2a5c8b1d4e7f"
+    private val VID_BROWSER_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+
+    private fun vidrockKey(): SecretKeySpec {
+        val hx = VIDROCK_GCM_KEY_HEX
+        val b = ByteArray(hx.length / 2)
+        for (i in b.indices) b[i] = hx.substring(2 * i, 2 * i + 2).toInt(16).toByte()
+        return SecretKeySpec(b, "AES")
+    }
+
+    private fun vidrockDecrypt(token: String): String? {
+        return try {
+            var t = token.trim().replace('-', '+').replace('_', '/')
+            while (t.length % 4 != 0) t += "="
+            val raw = Base64.decode(t, Base64.NO_WRAP)
+            if (raw.size <= 28) return null
+            val iv = raw.copyOfRange(0, 12)
+            val ct = raw.copyOfRange(12, raw.size)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, vidrockKey(), GCMParameterSpec(128, iv))
+            String(cipher.doFinal(ct), Charsets.UTF_8).trim().takeIf { it.isNotBlank() }
+        } catch (_: Exception) { null }
+    }
+
+    /** Cleaned English title -> Cinemeta -> moviedb_id (no API key needed). */
+    private suspend fun cinemetaMoviedbId(clean: String, year: Int?, isSeries: Boolean): Int? {
+        try {
+            if (clean.length < 3 || !clean.any { it.code < 128 && it.isLetter() }) return null
+            val kind = if (isSeries) "series" else "movie"
+            val enc = try { URLEncoder.encode(clean, "UTF-8") } catch (_: Exception) { clean }
+            val txt = app.get("https://v3-cinemeta.strem.io/catalog/$kind/top/search=$enc.json", timeout = 15).text
+            if (txt.isBlank()) return null
+            val root = try { vidMapper.readTree(txt) } catch (_: Exception) { return null }
+            val metas = root.get("metas") ?: return null
+            if (!metas.isArray || metas.size() == 0) return null
+            val want = normTitle(clean)
+            var bestId: String? = null
+            for (m in metas) {
+                val id = m.get("id")?.asText() ?: continue
+                if (!id.startsWith("tt")) continue
+                val nm = m.get("name")?.asText() ?: continue
+                if (normTitle(nm) == want) { bestId = id; break }
+            }
+            if (bestId == null) {
+                bestId = metas.firstOrNull { it.get("id")?.asText()?.startsWith("tt") == true }
+                    ?.get("id")?.asText() ?: return null
+            }
+            val metaTxt = app.get("https://v3-cinemeta.strem.io/meta/$kind/$bestId.json", timeout = 15).text
+            if (metaTxt.isBlank()) return null
+            val meta = try { vidMapper.readTree(metaTxt).get("meta") } catch (_: Exception) { return null } ?: return null
+            if (year != null) {
+                val my = meta.get("year")?.asText()?.filter { it.isDigit() }?.toIntOrNull()
+                    ?: meta.get("releaseInfo")?.asText()?.let { Regex("""(19\d{2}|20\d{2})""").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+                if (my != null && kotlin.math.abs(my - year) > 1) {
+                    Log.d(TAG, "cinemeta year mismatch $my vs $year for $clean")
+                    return null
+                }
+            }
+            return meta.get("moviedb_id")?.asInt()
+        } catch (e: Exception) {
+            Log.d(TAG, "cinemeta lookup failed for '$clean': ${e.message}")
+            return null
+        }
+    }
+
+    private suspend fun emitVidrockUrl(
+        dec: String,
+        tag: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        try {
+            if (!dec.startsWith("http") || dec.contains("sample", true) || dec.contains("bigbuckbunny", true)) return false
+            // Playlist JSON [{resolution,url}] ?
+            if (dec.contains("/playlist/") && !dec.contains(".m3u8") && !Regex("""\.mp4([?#]|$)""").containsMatchIn(dec)) {
+                try {
+                    val t = app.get(dec, referer = "https://vidrock.net/", timeout = 20, headers = mapOf("Accept" to "application/json,*/*")).text
+                    if (!t.isNullOrBlank() && !t.contains("#EXTM3U")) {
+                        val arr = try { vidMapper.readTree(t) } catch (_: Exception) { null }
+                        if (arr != null && arr.isArray && arr.size() > 0) {
+                            var ok = false
+                            for (cdn in arr) {
+                                val cu = cdn.get("url")?.asText()?.trim()?.takeIf { it.startsWith("http") } ?: continue
+                                val res = cdn.get("resolution")?.asText()?.filter { it.isDigit() }?.toIntOrNull() ?: 0
+                                val q = if (res in 144..4320) res else Qualities.Unknown.value
+                                try {
+                                    callback(newExtractorLink(source = this.name, name = "$name Vidrock $tag", url = cu) {
+                                        this.referer = "https://vidrock.net/"
+                                        this.headers = mapOf("Referer" to "https://vidrock.net/", "Origin" to "https://vidrock.net", "User-Agent" to VID_BROWSER_UA)
+                                        this.quality = q
+                                        this.type = if (cu.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                    })
+                                    ok = true
+                                } catch (_: Exception) {}
+                            }
+                            if (ok) return true
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            if (dec.contains(".m3u8") || Regex("""\.mp4([?#]|$)""").containsMatchIn(dec)) {
+                callback(newExtractorLink(source = this.name, name = "$name Vidrock $tag", url = dec) {
+                    this.referer = "https://vidrock.net/"
+                    this.headers = mapOf("Referer" to "https://vidrock.net/", "Origin" to "https://vidrock.net", "User-Agent" to VID_BROWSER_UA)
+                    this.quality = Qualities.Unknown.value
+                    this.type = if (dec.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                })
+                return true
+            }
+            return false
+        } catch (_: Exception) { return false }
+    }
+
+    /** External fallback: title -> Cinemeta moviedb_id -> Vidrock streams. Returns true if anything emitted. */
+    private suspend fun resolveViaVidrock(
+        rawTitle: String,
+        isSeries: Boolean,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        try {
+            val (clean, year) = cleanEnglishTitle(rawTitle)
+            Log.d(TAG, "vidrock fallback clean='$clean' year=$year series=$isSeries")
+            val tmdb = cinemetaMoviedbId(clean, year, isSeries) ?: run {
+                Log.d(TAG, "vidrock fallback: no moviedb_id for '$clean'")
+                return false
+            }
+            val api = if (isSeries) "https://vidrock.net/api/tv/$tmdb/${season ?: 1}/${episode ?: 1}"
+            else "https://vidrock.net/api/movie/$tmdb"
+            Log.d(TAG, "vidrock api $api")
+            val txt = try {
+                app.get(api, referer = "https://vidrock.net/", timeout = 20, headers = mapOf("Accept" to "application/json", "Origin" to "https://vidrock.net")).text
+            } catch (e: Exception) {
+                Log.d(TAG, "vidrock api failed: ${e.message}")
+                return false
+            }
+            if (txt.isBlank()) return false
+            val root = try { vidMapper.readTree(txt) } catch (_: Exception) { return false }
+            if (!root.isObject || root.size() == 0) return false
+            var ok = false
+            val fields = root.fields()
+            while (fields.hasNext()) {
+                val entry = fields.next()
+                val node = entry.value ?: continue
+                if (!node.isObject) continue
+                val enc = node.get("url")?.asText()?.trim()?.takeIf { it.isNotBlank() } ?: continue
+                val dec = vidrockDecrypt(enc) ?: continue
+                if (dec.equals("Unavailable", ignoreCase = true)) continue
+                if (emitVidrockUrl(dec, entry.key, callback)) ok = true
+            }
+            // Vidrock subtitles (best-effort, movie + tv)
+            if (ok) {
+                try {
+                    val subApi = if (isSeries) "https://sub.vdrk.site/v2/tv/$tmdb/${season ?: 1}/${episode ?: 1}"
+                    else "https://sub.vdrk.site/v2/movie/$tmdb"
+                    val stxt = app.get(subApi, referer = "https://vidrock.net/", timeout = 10).text
+                    if (!stxt.isNullOrBlank()) {
+                        val sarr = try { vidMapper.readTree(stxt) } catch (_: Exception) { null }
+                        if (sarr != null && sarr.isArray) {
+                            for (s in sarr) {
+                                val f = s.get("file")?.asText()?.takeIf { it.isNotBlank() } ?: continue
+                                val l = s.get("label")?.asText()?.takeIf { it.isNotBlank() } ?: "Vidrock"
+                                try { subtitleCallback(newSubtitleFile(l, fixUrl(f))) } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            Log.d(TAG, "vidrock fallback ok=$ok for '$clean'")
+            return ok
+        } catch (e: Exception) {
+            Log.d(TAG, "vidrock fallback error: ${e.message}")
+            return false
+        }
+    }
+
     private val tokenCache = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val tokenRefCache = java.util.concurrent.ConcurrentHashMap<String, String>()
-    private val failCache = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val FAIL_COOLDOWN_MS = 10 * 60 * 1000L
 
     private suspend fun mintToken(detailUrl: String, btn: String): String? {
         tokenCache[detailUrl]?.let { return it }
-        failCache[detailUrl]?.let { ts ->
-            if (System.currentTimeMillis() - ts < FAIL_COOLDOWN_MS) {
-                Log.d(TAG, "mint skipped (recent fail)")
-                return null
-            } else failCache.remove(detailUrl)
-        }
         val path = btn.substringAfter("freex2line.online", btn)
         for (host in MINTER_HOSTS) {
             val url = if (btn.contains("freex2line.online")) host + path else btn
@@ -580,62 +811,32 @@ class CimaNowProvider : MainAPI() {
                     if (next.isNullOrBlank()) {
                         Log.d(TAG, "mint hops exhausted at ${finalUrl.take(140)}")
                         diagnoseChallenge(body, "mint $host")
-                        if (redirectingFreeUrl != null && body.length > 100000) {
+                        // Stage-1 trap pages are JS-rendered (no meta/js redirect to follow).
+                        // Solve the xor trap in-JVM to reach the countdown page + pig URL.
+                        if (body.length > 20000 && body.contains("trap_")) {
                             try {
-                                Log.d(TAG, "mint retry $redirectingFreeUrl")
-                                val r = fetchHop(redirectingFreeUrl!!, referer, "mint retry $host")
-                                if (r != null) {
-                                    if (r.first.contains("token=") && r.first.contains("watching")) {
-                                        tokenCache[detailUrl] = r.first
-                                        tokenRefCache[detailUrl] = referer
-                                        return r.first
+                                solveTrapStage1(body)?.let { solved ->
+                                    Log.d(TAG, "trap stage-1 solved pig=${solved.pigUrl?.take(120)}")
+                                    val pig = solved.pigUrl
+                                    if (!pig.isNullOrBlank()) {
+                                        try {
+                                            val pr = app.get(
+                                                pig, headers = browserHeaders, referer = finalUrl,
+                                                interceptor = cfKiller, timeout = 15, allowRedirects = false
+                                            )
+                                            val loc = pr.headers["Location"] ?: pr.headers["location"] ?: ""
+                                            if (loc.contains("token=") && loc.contains("watching")) {
+                                                val abs = if (loc.startsWith("http")) loc else fixUrl(loc)
+                                                Log.d(TAG, "minted via pig ${abs.take(140)}")
+                                                tokenCache[detailUrl] = abs
+                                                tokenRefCache[detailUrl] = finalUrl
+                                                return abs
+                                            }
+                                            Log.d(TAG, "pig step loc=${loc.take(160)} (proof-gated countdown still required)")
+                                        } catch (pe: Exception) {
+                                            Log.d(TAG, "pig step failed: ${pe.message}")
+                                        }
                                     }
-                                    extractTokenizedWatch(r.second)?.let { tok ->
-                                        val abs = if (tok.startsWith("/")) "https://cimanow.cc$tok" else tok
-                                        tokenCache[detailUrl] = abs
-                                        tokenRefCache[detailUrl] = referer
-                                        return abs
-                                    }
-                                    Log.d(TAG, "mint retry final=${r.first.take(200)} len=${r.second.length}")
-                                }
-                            } catch (_: Exception) {}
-                            try {
-                                val mobBlog = finalUrl.trimEnd('/') + "?m=1"
-                                Log.d(TAG, "mint mobile $mobBlog")
-                                val m = fetchHop(mobBlog, referer, "mint mobile $host")
-                                if (m != null) {
-                                    if (m.first.contains("token=") && m.first.contains("watching")) {
-                                        tokenCache[detailUrl] = m.first
-                                        tokenRefCache[detailUrl] = referer
-                                        return m.first
-                                    }
-                                    extractTokenizedWatch(m.second)?.let { tok ->
-                                        val abs = if (tok.startsWith("/")) "https://cimanow.cc$tok" else tok
-                                        Log.d(TAG, "minted mobile [watch-url] ${abs.take(140)}")
-                                        tokenCache[detailUrl] = abs
-                                        tokenRefCache[detailUrl] = referer
-                                        return abs
-                                    }
-                                    Log.d(TAG, "mint mobile final=${m.first.take(200)} len=${m.second.length} cimanow=${m.second.contains("cimanow")} watching=${m.second.contains("watching")}")
-                                    Log.d(TAG, "mint mobile snippet=${m.second.replace(Regex("""\s+"""), " ").take(300)}")
-                                }
-                                val mobRed = redirectingFreeUrl!!.trimEnd('/') + "?m=1"
-                                Log.d(TAG, "mint mobile2 $mobRed")
-                                val m2 = fetchHop(mobRed, referer, "mint mobile2 $host")
-                                if (m2 != null) {
-                                    if (m2.first.contains("token=") && m2.first.contains("watching")) {
-                                        tokenCache[detailUrl] = m2.first
-                                        tokenRefCache[detailUrl] = referer
-                                        return m2.first
-                                    }
-                                    extractTokenizedWatch(m2.second)?.let { tok ->
-                                        val abs = if (tok.startsWith("/")) "https://cimanow.cc$tok" else tok
-                                        Log.d(TAG, "minted mobile2 [watch-url] ${abs.take(140)}")
-                                        tokenCache[detailUrl] = abs
-                                        tokenRefCache[detailUrl] = referer
-                                        return abs
-                                    }
-                                    Log.d(TAG, "mint mobile2 final=${m2.first.take(200)} len=${m2.second.length} cimanow=${m2.second.contains("cimanow")} watching=${m2.second.contains("watching")}")
                                 }
                             } catch (_: Exception) {}
                         }
@@ -645,7 +846,6 @@ class CimaNowProvider : MainAPI() {
                 Log.d(TAG, "mint $host failed: ${e.message}")
             }
         }
-        failCache[detailUrl] = System.currentTimeMillis()
         return null
     }
 
@@ -811,21 +1011,49 @@ class CimaNowProvider : MainAPI() {
                 add(u)
             }
             Log.d(TAG, "candidates: ${candidates.keys}")
+            var nativeEmitted = false
+            val counting: (ExtractorLink) -> Unit = { nativeEmitted = true; callback(it) }
             for ((u, q) in candidates) {
                 try {
                     loadExtractor(u, watchUrl, subtitleCallback) { link ->
                         if (link.quality == Qualities.Unknown.value && q != Qualities.Unknown.value) {
                             link.quality = q
                         }
-                        callback(link)
+                        counting(link)
                     }
                 } catch (e: Exception) {
                     Log.d(TAG, "extractor failed $u: ${e.message}")
                 }
             }
+            if (nativeEmitted) return true
+            // Native mint failed (protection now needs JS countdown + trusted click).
+            // Radical fallback: cleaned title -> Cinemeta moviedb_id -> Vidrock streams.
+            try {
+                val detailUrl = if (data.contains("/watching/")) detailOf(data) else data
+                val isSeries = detailUrl.contains("/selary/")
+                var rawTitle: String? = null
+                try {
+                    val dDoc = app.get(detailUrl, headers = browserHeaders, referer = mainUrl, interceptor = cfKiller, timeout = 15).document
+                    rawTitle = dDoc.selectFirst("h1")?.text()?.trim()?.takeIf { it.isNotBlank() }
+                } catch (_: Exception) {}
+                if (rawTitle.isNullOrBlank()) {
+                    rawTitle = try { URLDecoder.decode(detailUrl.substringAfter("cc/").substringBefore("/watching").replace("-", " "), "UTF-8") } catch (_: Exception) { null }
+                }
+                if (!rawTitle.isNullOrBlank()) {
+                    val season = try { seasonFromSlug(detailUrl) } catch (_: Exception) { null }
+                    val episode = try { episodeFromSlug(detailUrl) } catch (_: Exception) { null }
+                    if (resolveViaVidrock(rawTitle!!, isSeries, season, episode, subtitleCallback, callback)) {
+                        return true
+                    }
+                } else {
+                    Log.d(TAG, "fallback skipped: no title for $detailUrl")
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "fallback failed: ${e.message}")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "loadLinks error: ${e.message}", e)
         }
-        return true
+        return false
     }
 }

@@ -1,4 +1,4 @@
-version = 17
+version = 18
 
 cloudstream {
     description = "CimaNow - cimanow.cc movies & series"
