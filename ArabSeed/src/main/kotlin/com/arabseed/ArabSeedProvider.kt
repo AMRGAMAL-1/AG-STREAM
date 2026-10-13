@@ -386,6 +386,16 @@ class ArabSeedProvider : MainAPI() {
         @JsonProperty("message") val message: String? = null
     )
 
+    private data class AsVidaraSub(
+        @JsonProperty("file_path") val filePath: String? = null,
+        @JsonProperty("language") val language: String? = null
+    )
+
+    private data class AsVidaraResp(
+        @JsonProperty("streaming_url") val streamingUrl: String? = null,
+        @JsonProperty("subtitles") val subtitles: List<AsVidaraSub>? = null
+    )
+
     private suspend fun ajaxServerUrl(
         postId: String,
         quality: String,
@@ -419,6 +429,267 @@ class ArabSeedProvider : MainAPI() {
         }
     }
 
+    private fun megamaxQuality(label: String?): Int {
+        val q = Regex("""(\d{3,4})\s*p""", RegexOption.IGNORE_CASE).find(label ?: "")?.groupValues?.get(1)?.toIntOrNull()
+        if (q != null && q in 144..4320) return q
+        return extractQuality(label)
+    }
+
+    private suspend fun resolveVidaraEmbed(
+        eurl: String,
+        referer: String,
+        label: String?,
+        quality: Int,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        try {
+            val host = Regex("""https?://([^/]+)""").find(eurl)?.groupValues?.get(1)?.lowercase() ?: return false
+            if (!host.contains("vidara")) return false
+            val code = eurl.trim().trimEnd('/').substringAfterLast('/').substringBefore('?').substringBefore('#')
+            if (code.isBlank() || code.length > 64 || code.contains(".")) return false
+            val origin = "https://" + eurl.substringAfter("://").substringBefore('/')
+            val res = app.post(
+                "$origin/api/stream", headers = mapOf("Origin" to origin), referer = eurl,
+                timeout = 15, json = mapOf("filecode" to code, "device" to "web", "codecs" to emptyList<String>())
+            )
+            val parsed = try { AppUtils.parseJson<AsVidaraResp>(res.text) } catch (_: Exception) { return false }
+            val stream = parsed.streamingUrl?.trim()?.takeIf { it.startsWith("http") } ?: return false
+            Log.d(TAG, "vidara $code -> ${stream.take(90)}")
+            parsed.subtitles?.forEach { s ->
+                val f = s.filePath?.takeIf { it.isNotBlank() } ?: return@forEach
+                try { subtitleCallback(newSubtitleFile(s.language ?: "sub", fixUrl(f))) } catch (_: Exception) {}
+            }
+            callback(newExtractorLink(source = this.name, name = label?.let { "$name $it" } ?: "$name Vidara", url = stream) {
+                this.referer = eurl
+                this.headers = mapOf("Referer" to eurl, "Origin" to origin, "User-Agent" to (embedHeaders["User-Agent"] ?: ""))
+                this.quality = quality
+                this.type = ExtractorLinkType.M3U8
+            })
+            return true
+        } catch (e: Exception) {
+            Log.d(TAG, "vidara resolve failed: ${e.message}")
+            return false
+        }
+    }
+
+    private suspend fun resolveDoodEmbed(
+        eurl: String,
+        referer: String,
+        label: String?,
+        quality: Int,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        try {
+            val host = Regex("""https?://([^/]+)""").find(eurl)?.groupValues?.get(1)?.lowercase() ?: return false
+            if (!host.contains("dood") && !host.contains("mogo") && !host.contains("dsvplay") && !host.contains("ds2play")) return false
+            val page = app.get(eurl, headers = embedHeaders, referer = referer, interceptor = cfKiller, timeout = 15).text
+            if (page.isBlank()) return false
+            val pass = Regex("""/pass_md5/[^"'`\s]+""").find(page)?.value ?: return false
+            val file = app.get("https://$host$pass", headers = embedHeaders, referer = eurl, interceptor = cfKiller, timeout = 15).text
+            val src = Regex("""https?://[^\s"'`]+\.mp4[^\s"'`]*""").find(file)?.value?.replace("\\/", "/")?.trim() ?: return false
+            if (isSampleUrl(src)) return false
+            Log.d(TAG, "dood $host -> ${src.take(90)}")
+            callback(newExtractorLink(source = this.name, name = label?.let { "$name $it" } ?: "$name Dood", url = src) {
+                this.referer = eurl
+                this.headers = mapOf("Referer" to eurl, "User-Agent" to (embedHeaders["User-Agent"] ?: ""))
+                this.quality = quality
+                this.type = ExtractorLinkType.VIDEO
+            })
+            return true
+        } catch (e: Exception) {
+            Log.d(TAG, "dood resolve failed: ${e.message}")
+            return false
+        }
+    }
+
+    private suspend fun resolveMegamax(
+        eurl: String,
+        pageBody: String,
+        label: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        try {
+            val host = "https://" + eurl.substringAfter("://").substringBefore('/')
+            val version = Regex(""""version"\s*:\s*"([^"]+)"""").find(pageBody)?.groupValues?.get(1)?.takeIf { it.isNotBlank() } ?: return false
+            val res = app.get(
+                eurl, headers = embedHeaders + mapOf(
+                    "X-Inertia" to "true",
+                    "X-Inertia-Version" to version,
+                    "X-Inertia-Partial-Data" to "streams",
+                    "X-Inertia-Partial-Component" to "files/mirror/video",
+                    "X-Requested-With" to "XMLHttpRequest",
+                    "Accept" to "application/json"
+                ), referer = "$host/", interceptor = cfKiller, timeout = 15
+            )
+            val txt = res.text
+            if (txt.isBlank() || !txt.contains("\"streams\"")) return false
+            val root = try { AppUtils.parseJson<Map<String, Any?>>(txt) } catch (_: Exception) { return false }
+            @Suppress("UNCHECKED_CAST")
+            val streams = ((root["props"] as? Map<String, Any?>)?.get("streams") as? Map<String, Any?>) ?: return false
+            if (streams["status"] != "success") return false
+            val data = streams["data"] as? List<Map<String, Any?>> ?: return false
+            var ok = false
+            for (item in data) {
+                val qLabel = (item["label"] as? String)?.trim()
+                val q = megamaxQuality(qLabel)
+                val mirrors = item["mirrors"] as? List<Map<String, Any?>> ?: continue
+                for (m in mirrors) {
+                    var mu = (m["link"] as? String)?.trim()?.replace("\\/", "/") ?: continue
+                    if (mu.startsWith("//")) mu = "https:$mu"
+                    if (!mu.startsWith("http")) continue
+                    val driver = (m["driver"] as? String)?.lowercase() ?: ""
+                    val mLabel = label?.let { "$it ${qLabel ?: ""}".trim() } ?: (qLabel ?: "MegaMax")
+                    try {
+                        var done = false
+                        if (mu.contains("vidara")) {
+                            done = resolveVidaraEmbed(mu, eurl, mLabel, q, subtitleCallback, callback)
+                        } else if (mu.contains("dood") || mu.contains("mogo")) {
+                            done = resolveDoodEmbed(mu, eurl, mLabel, q, callback)
+                        }
+                        if (!done) {
+                            done = resolveGenericTarget(mu, eurl, mLabel, q, subtitleCallback, callback)
+                        }
+                        if (done) ok = true
+                    } catch (_: Exception) {}
+                }
+            }
+            Log.d(TAG, "megamax ok=$ok entries=${data.size}")
+            return ok
+        } catch (e: Exception) {
+            Log.d(TAG, "megamax resolve failed: ${e.message}")
+            return false
+        }
+    }
+
+    private suspend fun resolveGenericTarget(
+        u: String,
+        referer: String,
+        label: String?,
+        quality: Int,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        try {
+            if (resolveVidaraEmbed(u, referer, label, quality, subtitleCallback, callback)) return true
+            if (resolveDoodEmbed(u, referer, label, quality, callback)) return true
+            val host = Regex("""https?://([^/]+)""").find(u)?.groupValues?.get(1)?.lowercase() ?: ""
+            val perTimeout = if (host.contains("morencius") || host.contains("vidhide") || host.contains("earnvid")) 8L else 12L
+            var res = app.get(u, headers = embedHeaders, referer = referer, interceptor = cfKiller, timeout = perTimeout)
+            var body = res.text
+            var base = u
+            if (body.contains("Page is loading, please wait")) {
+                Log.d(TAG, "js-wall, skip ${u.take(80)}")
+                return false
+            }
+            if (body.contains("vpn access is not allowed")) {
+                Log.d(TAG, "vpn-wall, skip ${u.take(80)}")
+                return false
+            }
+            val redir = Regex("""window\.location\.replace\(\s*['"](https?://[^'"]+)['"]""").find(body)?.groupValues?.get(1)
+                ?: Regex("""location(?:\.href)?\s*=\s*['"](https?://[^'"]+)['"]""").find(body)?.groupValues?.get(1)
+            if (redir != null && redir != u) {
+                try {
+                    res = app.get(redir, headers = embedHeaders, referer = u, interceptor = cfKiller, timeout = perTimeout)
+                    body = res.text
+                    base = redir
+                } catch (_: Exception) {}
+            }
+            if (body.isBlank()) return false
+            val headers = linkHeaders(base, body)
+            val voeBlob = Regex("""<script type="application/json">\["(.*?)"\]""", RegexOption.DOT_MATCHES_ALL)
+                .find(body)?.groupValues?.get(1)?.replace("\\/", "/")
+            if (!voeBlob.isNullOrBlank()) {
+                val real = try { voeDecodeSource(voeBlob) } catch (_: Exception) { null }
+                if (!real.isNullOrBlank()) {
+                    callback(newExtractorLink(source = this.name, name = label ?: "$name Server", url = real) {
+                        this.referer = base
+                        this.headers = headers
+                        this.quality = quality
+                        this.type = if (real.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                    })
+                    return true
+                }
+            }
+            val scripts = try {
+                val raw = res.document.select("script").joinToString("\n") { it.data() + "\n" + it.html() }
+                var s = try { JsUnpacker(raw).unpack() ?: raw } catch (_: Exception) { raw }
+                val packed = res.document.select("script").joinToString("\n") { it.data() }
+                for (chunk in Regex("""eval\(function\(p,a,c,k,e,d\).*?\.split\('\|'\)\)""", RegexOption.DOT_MATCHES_ALL).findAll(packed).map { it.value }) {
+                    try {
+                        val evalIdx = packed.indexOf(chunk)
+                        val splitIdx = packed.indexOf(".split('|')", evalIdx)
+                        val payloadStart = packed.indexOf("}('", evalIdx)
+                        if (payloadStart == -1 || payloadStart + 3 >= splitIdx) continue
+                        var dend = splitIdx - 1
+                        while (dend > payloadStart && packed[dend].isWhitespace()) dend--
+                        if (dend <= payloadStart || packed[dend] != '\'') continue
+                        var dopen = dend - 1
+                        while (dopen > payloadStart) {
+                            if (packed[dopen] == '\'' && packed[dopen - 1] != '\\') break
+                            dopen--
+                        }
+                        val dict = packed.substring(dopen + 1, dend).split('|')
+                        if (dict.size < 10) continue
+                        val alpha = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                        fun toBase(n: Int, radix: Int): String {
+                            if (n < radix) return alpha[n].toString()
+                            var v = n
+                            var str = ""
+                            while (v > 0) {
+                                str = alpha[v % radix] + str
+                                v /= radix
+                            }
+                            return str
+                        }
+                        val payload = packed.substring(payloadStart + 3, dopen - 1)
+                        var p36 = payload
+                        for (idx in dict.size - 1 downTo 0) {
+                            p36 = Regex("\\b" + Regex.escape(toBase(idx, 36)) + "\\b").replace(p36, dict[idx])
+                        }
+                        if (p36.contains("m3u8")) s += "\n$p36"
+                    } catch (_: Exception) {}
+                }
+                s
+            } catch (_: Exception) { body }
+            val files = Regex("""["'](https?://[^"']+(?:m3u8|mp4)[^"']*)["']""").findAll(scripts)
+                .map { it.groupValues[1].replace("\\/", "/").replace("&amp;", "&") }
+                .filter { it.startsWith("http") && !isSampleUrl(it) }.distinct().toList()
+            var ok = false
+            for (f in files) {
+                try {
+                    callback(newExtractorLink(source = this.name, name = label ?: "$name Server", url = f) {
+                        this.referer = base
+                        this.headers = headers
+                        this.quality = if (quality != Qualities.Unknown.value) quality else extractQuality(label)
+                        this.type = if (f.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                    })
+                    ok = true
+                } catch (_: Exception) {}
+            }
+            if (ok) return true
+            res.document.select("iframe[src]").forEach { f ->
+                val s = f.attr("src").trim()
+                if (s.isBlank() || s.contains("youtube")) return@forEach
+                val nu = if (s.startsWith("//")) "https:$s" else fixUrl(s)
+                try {
+                    loadExtractor(nu, base, subtitleCallback, callback)
+                    ok = true
+                } catch (_: Exception) {}
+            }
+            if (ok) return true
+            try {
+                loadExtractor(base, referer, subtitleCallback, callback)
+                return true
+            } catch (_: Exception) {}
+            return false
+        } catch (e: Exception) {
+            Log.d(TAG, "generic target failed $u: ${e.message}")
+            return false
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -442,7 +713,7 @@ class ArabSeedProvider : MainAPI() {
             val wdoc = wres.document
             val serverLis = wdoc.select("li[data-server]")
             Log.d(TAG, "servers=${serverLis.size}")
-            val targets = linkedMapOf<String, String?>()
+            val targets = linkedMapOf<String, Pair<String?, Int>>()
             val csrf = Regex("""csrf__token['"]?\s*:\s*["']([^"']+)""").find(html)?.groupValues?.get(1)
                 ?: Regex("""csrf_token['"]?\s*[:=]\s*["']([^"']+)""").find(html)?.groupValues?.get(1)
             val postId = serverLis.firstOrNull()?.attr("data-post")?.takeIf { it.isNotBlank() }
@@ -459,7 +730,7 @@ class ArabSeedProvider : MainAPI() {
                             val url = ajaxServerUrl(postId, qu, idx, csrf, watchUrl)
                             Log.d(TAG, "ajax server=$idx ($label) -> ${url?.take(100)}")
                             if (!url.isNullOrBlank() && url.startsWith("http")) {
-                                synchronized(targets) { targets.putIfAbsent(url, label) }
+                                synchronized(targets) { targets.putIfAbsent(url, label to extractQuality(qu)) }
                             }
                         }
                     }.awaitAll()
@@ -469,14 +740,14 @@ class ArabSeedProvider : MainAPI() {
                     val label = li.selectFirst("span")?.text()?.trim()?.takeIf { it.isNotBlank() }
                         ?: "سيرفر ${li.attr("data-server")}"
                     val pu = li.attr("data-player-url").trim()
-                    if (pu.startsWith("http")) targets[pu] = label
+                    if (pu.startsWith("http")) targets[pu] = label to Qualities.Unknown.value
                 }
             }
             wdoc.select(".arabseed-deferred-iframe[data-src], iframe[src]").forEach { el ->
                 val s = (el.attr("data-src").ifBlank { el.attr("src") }).trim()
                 if (s.isBlank() || s.contains("youtube")) return@forEach
                 val u = if (s.startsWith("//")) "https:$s" else fixUrl(s)
-                targets.putIfAbsent(u, null)
+                targets.putIfAbsent(u, null to Qualities.Unknown.value)
             }
             Log.d(TAG, "targets=$targets")
             val count = java.util.concurrent.atomic.AtomicInteger(0)
@@ -484,12 +755,12 @@ class ArabSeedProvider : MainAPI() {
                 synchronized(this) { callback(link) }
                 count.incrementAndGet()
             }
-            suspend fun emitT(label: String, url: String, isM3u8: Boolean, referer: String, headers: Map<String, String>? = null) {
+            suspend fun emitT(label: String, url: String, isM3u8: Boolean, referer: String, headers: Map<String, String>? = null, quality: Int = Qualities.Unknown.value) {
                 try {
                     val link = newExtractorLink(source = this.name, name = label, url = url) {
                         this.referer = referer
                         if (headers != null) this.headers = headers
-                        this.quality = extractQuality(label)
+                        this.quality = if (quality != Qualities.Unknown.value) quality else extractQuality(label)
                         this.type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     }
                     safeCb(link)
@@ -552,80 +823,30 @@ class ArabSeedProvider : MainAPI() {
                 return null
             }
             coroutineScope {
-                targets.entries.map { (u, label) ->
+                targets.entries.map { (u, lq) ->
+                    val label = lq.first
+                    val quality = lq.second
                     async {
                         try {
-                            try {
-                                val host = Regex("""https?://([^/]+)""").find(u)?.groupValues?.get(1) ?: ""
-                                if (host.isNotBlank() && (u.contains("/iframe/") || host.contains("megamax") || host.contains("q7v3k"))) {
-                                    val seeded = synchronized(seededHosts) {
-                                        if (seededHosts.contains(host)) false
-                                        else {
-                                            seededHosts.add(host)
-                                            true
-                                        }
-                                    }
-                                    if (seeded) {
-                                        try {
-                                            app.get("https://$host/", headers = embedHeaders, referer = watchUrl, interceptor = cfKiller, timeout = 15)
-                                            Log.d(TAG, "seeded cookies for $host")
-                                        } catch (_: Exception) {}
-                                    }
-                                }
-                            } catch (_: Exception) {}
-                            var res = app.get(u, headers = embedHeaders, referer = watchUrl, interceptor = cfKiller, timeout = 15)
+                            val host = Regex("""https?://([^/]+)""").find(u)?.groupValues?.get(1)?.lowercase() ?: ""
+                            var res = app.get(u, headers = embedHeaders, referer = watchUrl, interceptor = cfKiller, timeout = 12)
                             var body = res.text
-                            var base = u
-                            val redir = Regex("""window\.location\.replace\(\s*['"](https?://[^'"]+)['"]""").find(body)?.groupValues?.get(1)
-                                ?: Regex("""location(?:\.href)?\s*=\s*['"](https?://[^'"]+)['"]""").find(body)?.groupValues?.get(1)
-                            if (redir != null && redir != u) {
-                                Log.d(TAG, "target redirect -> ${redir.take(100)}")
+                            if ((res.code == 403 || res.code == 401) && u.contains("/iframe/")) {
                                 try {
-                                    res = app.get(redir, headers = embedHeaders, referer = u, interceptor = cfKiller, timeout = 15)
+                                    val ownRef = "https://" + u.substringAfter("://").substringBefore('/')
+                                    res = app.get(u, headers = embedHeaders, referer = "$ownRef/", interceptor = cfKiller, timeout = 12)
                                     body = res.text
-                                    base = redir
+                                    Log.d(TAG, "iframe retry own-referer -> ${res.code} len=${body.length}")
                                 } catch (_: Exception) {}
                             }
                             Log.d(TAG, "target ${u.take(80)} -> ${res.code} len=${body.length} final=${res.url.take(80)}")
-                            if (res.code == 403 || res.code == 401) {
-                                Log.d(TAG, "target wall ${u.take(80)} snippet=${body.replace(Regex("""\s+"""), " ").take(200)}")
+                            if (body.contains("files/mirror/video") || body.contains("hashId")) {
+                                if (resolveMegamax(u, body, label, subtitleCallback, safeCb)) return@async
                             }
                             if (body.isBlank()) return@async
-                            val headers = linkHeaders(base, body)
-                            val voeBlob = Regex("""<script type="application/json">\["(.*?)"\]""", RegexOption.DOT_MATCHES_ALL)
-                                .find(body)?.groupValues?.get(1)?.replace("\\/", "/")
-                            if (!voeBlob.isNullOrBlank()) {
-                                val real = try { voeDecodeSource(voeBlob) } catch (_: Exception) { null }
-                                if (!real.isNullOrBlank()) {
-                                    Log.d(TAG, "voe real -> ${real.take(100)}")
-                                    emitT(label ?: "$name Server", real, real.contains(".m3u8"), base, headers)
-                                    return@async
-                                }
-                            }
-                            val scripts = try {
-                                val raw = res.document.select("script").joinToString("\n") { it.data() + "\n" + it.html() }
-                                var s = try { JsUnpacker(raw).unpack() ?: raw } catch (_: Exception) { raw }
-                                unpackXUploadLocal(raw)?.let { s += "\n$it" }
-                                s
-                            } catch (_: Exception) { body }
-                            val files = Regex("""["'](https?://[^"']+(?:m3u8|mp4)[^"']*)["']""").findAll(scripts)
-                                .map { it.groupValues[1].replace("\\/", "/").replace("&amp;", "&") }
-                                .filter { it.startsWith("http") && !isSampleUrl(it) }.distinct().toList()
-                            for (f in files) {
-                                emitT(label ?: "$name Server", f, f.contains(".m3u8"), base, headers)
-                            }
-                            if (files.isNotEmpty()) return@async
-                            res.document.select("iframe[src]").forEach { f ->
-                                val s = f.attr("src").trim()
-                                if (s.isBlank() || s.contains("youtube")) return@forEach
-                                val nu = if (s.startsWith("//")) "https:$s" else fixUrl(s)
-                                try {
-                                    loadExtractor(nu, base, subtitleCallback, safeCb)
-                                } catch (_: Exception) {}
-                            }
-                            try {
-                                loadExtractor(base, watchUrl, subtitleCallback, safeCb)
-                            } catch (_: Exception) {}
+                            if (resolveVidaraEmbed(u, watchUrl, label, quality, subtitleCallback, safeCb)) return@async
+                            if (resolveDoodEmbed(u, watchUrl, label, quality, safeCb)) return@async
+                            if (resolveGenericTarget(u, watchUrl, label, quality, subtitleCallback, safeCb)) return@async
                         } catch (e: Exception) {
                             Log.d(TAG, "target failed $u: ${e.message}")
                         }
