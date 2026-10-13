@@ -1,0 +1,7 @@
+{
+  "name": "AG-STREAM",
+  "description": "مشاهدة الافلام والمسلسلات تجربة خالية من الاعلانات",
+  "iconUrl": "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/icon.png",
+  "manifestVersion": 1,
+  "pluginLists": ["https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/builds/plugins.json", "https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/builds/plugins-foreign.json"]
+}

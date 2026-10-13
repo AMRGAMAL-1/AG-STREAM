@@ -1,0 +1,5 @@
+# Foreign (non-Arabic) provider modules.
+# These are published to builds/plugins-foreign.json instead of builds/plugins.json,
+# so the Arabic catalogue stays clean. One module dir name per line.
+Dexter
+Movy

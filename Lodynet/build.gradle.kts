@@ -1,0 +1,16 @@
+version = 3
+
+cloudstream {
+    description = ""
+    authors = listOf("AMR GAMAL")
+    language = "ar"
+
+    status = 1
+
+    tvTypes = listOf(
+        "Movie",
+        "tvTypes"
+    )
+
+    iconUrl = "https://lodynet.watch/wp-content/themes/Lodynet2020/Img/Logo.webp"
+}

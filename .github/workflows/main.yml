@@ -1,0 +1,385 @@
+name: Build
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - main
+    paths-ignore:
+      - '*.md'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          path: "src"
+          fetch-depth: 0
+
+      - name: Checkout or Create Builds Branch
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+
+          BUILDS_URL="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+
+          echo "Checking if builds branch exists..."
+
+          if git ls-remote --exit-code --heads "$BUILDS_URL" builds >/dev/null 2>&1; then
+            echo "builds branch exists."
+
+            git clone \
+              --branch builds \
+              --single-branch \
+              "$BUILDS_URL" \
+              builds
+
+          else
+            echo "builds branch does not exist."
+            echo "Creating builds branch..."
+
+            mkdir -p builds
+            cd builds
+
+            git init
+            git config user.email "actions@github.com"
+            git config user.name "GitHub Actions"
+
+            git remote add origin "$BUILDS_URL"
+
+            git checkout --orphan builds
+
+            touch .gitkeep
+            git add .gitkeep
+            git commit -m "Initialize builds branch"
+
+            git push origin builds
+
+            echo "builds branch created successfully."
+          fi
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5.2.0
+        with:
+          distribution: "temurin"
+          java-version: 17
+
+      - name: Setup Android SDK
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+          yes | sdkmanager --licenses
+
+      - name: Remove comments from source files
+        working-directory: "src"
+        shell: python
+        run: |
+          import os
+          import re
+
+          pattern = re.compile(r'^\s*//.*\r?\n?', re.MULTILINE)
+
+          for root, dirs, files in os.walk('.'):
+              dirs[:] = [d for d in dirs if not d.startswith('.')]
+              for file in files:
+                  if file.endswith('.kt') or file.endswith('.kts'):
+                      file_path = os.path.join(root, file)
+                      try:
+                          with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                              content = f.read()
+
+                          cleaned_content = pattern.sub('', content)
+
+                          if cleaned_content != content:
+                              with open(file_path, 'w', encoding='utf-8') as f:
+                                  f.write(cleaned_content)
+
+                              print(f"Removed comments from: {file_path}")
+
+                      except Exception as e:
+                          print(f"Error processing {file_path}: {e}")
+
+      - name: Push cleaned files to source branch (Before Secrets Injection)
+        working-directory: "src"
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+
+          git add -u
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Strip comments [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+          else
+            echo "No changes to push"
+          fi
+
+      - name: Inject Secrets into Source Code
+        working-directory: "src"
+        shell: python
+        env:
+          ALL_SECRETS: ${{ toJson(secrets) }}
+        run: |
+          import os
+          import json
+
+          all_secrets = json.loads(os.getenv("ALL_SECRETS", "{}"))
+          mapping_file = os.path.join(".github", "secrets_mapping.json")
+
+          if not os.path.exists(mapping_file):
+              print(f"Warning: {mapping_file} not found. Skipping secrets injection.")
+              exit(0)
+
+          try:
+              with open(mapping_file, "r", encoding="utf-8") as f:
+                  mapping = json.loads(f.read())
+          except Exception as e:
+              print(f"Error reading {mapping_file}: {e}")
+              exit(1)
+
+          replacements = {
+              placeholder: all_secrets.get(secret_name, "")
+              for placeholder, secret_name in mapping.items()
+              if all_secrets.get(secret_name)
+          }
+
+          for root, dirs, files in os.walk('.'):
+              dirs[:] = [d for d in dirs if not d.startswith('.')]
+              for file in files:
+                  if file.endswith('.kt') or file.endswith('.kts'):
+                      file_path = os.path.join(root, file)
+                      try:
+                          with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                              content = f.read()
+
+                          modified = False
+                          for placeholder, secret_val in replacements.items():
+                              if placeholder in content:
+                                  content = content.replace(placeholder, secret_val)
+                                  modified = True
+
+                          if modified:
+                              with open(file_path, 'w', encoding='utf-8') as f:
+                                  f.write(content)
+                              print(f"Injected secrets into: {file_path}")
+
+                      except Exception as e:
+                          print(f"Error processing {file_path}: {e}")
+
+      - name: Build Plugins
+        working-directory: "src"
+        run: |
+          echo "=== listing files in src folder ==="
+          ls -la
+
+          if [ -f "gradlew" ]; then
+            echo "gradlew found, setting execution permissions..."
+            chmod +x gradlew
+            GRADLE_CMD="./gradlew"
+          else
+            echo "gradlew NOT found! Falling back to system gradle..."
+            GRADLE_CMD="gradle"
+          fi
+
+          $GRADLE_CMD make makePluginsJson
+
+          python3 -c "
+          import json, urllib.request, os, urllib.parse
+
+          generated_path = 'build/plugins.json'
+
+          existing_builds_path = os.path.join(
+              os.environ.get('GITHUB_WORKSPACE', ''),
+              'builds',
+              'plugins.json'
+          )
+
+          url = 'https://raw.githubusercontent.com/${{ github.repository }}/builds/plugins.json'
+
+          def get_cs3_filename(url_str):
+              if not url_str:
+                  return ''
+
+              parts = url_str.split('/')
+              unquoted = urllib.parse.unquote(parts[-1])
+
+              if unquoted.endswith('.cs3'):
+                  return unquoted[:-4]
+
+              return unquoted
+
+          builds_name_map = {}
+
+          try:
+              if os.path.exists(existing_builds_path):
+                  with open(existing_builds_path, 'r', encoding='utf-8') as f:
+                      builds_data = json.loads(f.read())
+
+                  for item in builds_data:
+                      cs3_name = get_cs3_filename(item.get('url'))
+
+                      if cs3_name:
+                          builds_name_map[cs3_name] = item.get('name')
+
+          except Exception as e:
+              print(f'Error reading local builds: {e}')
+
+          remote_name_map = {}
+
+          try:
+              response = urllib.request.urlopen(url)
+
+              remote_data = json.loads(
+                  response.read().decode('utf-8')
+              )
+
+              for item in remote_data:
+                  cs3_name = get_cs3_filename(item.get('url'))
+
+                  if cs3_name:
+                      remote_name_map[cs3_name] = item.get('name')
+
+          except Exception as e:
+              print(f'Error reading remote: {e}')
+
+          try:
+              if os.path.exists(generated_path):
+                  with open(generated_path, 'r', encoding='utf-8') as f:
+                      gen_data = json.loads(f.read())
+
+                  for item in gen_data:
+                      int_name = item.get('internalName')
+
+                      if int_name in builds_name_map:
+                          item['name'] = builds_name_map[int_name]
+
+                          print(
+                              f'Preserved existing builds name for '
+                              f'{int_name} -> {builds_name_map[int_name]}'
+                          )
+
+                      elif int_name in remote_name_map:
+                          item['name'] = remote_name_map[int_name]
+
+                          print(
+                              f'Set name for new plugin {int_name} '
+                              f'from main branch -> {remote_name_map[int_name]}'
+                          )
+
+                  with open(generated_path, 'w', encoding='utf-8') as f:
+                      json.dump(
+                          gen_data,
+                          f,
+                          indent=4,
+                          ensure_ascii=False
+                      )
+
+          except Exception as e:
+              print(f'Error merging names: {e}')
+          "
+
+          python3 -c "
+          import json, os
+
+          # Split the combined catalogue: foreign modules (see foreign-modules.txt)
+          # go to plugins-foreign.json so the Arabic list stays clean.
+          foreign = set()
+          try:
+              with open('foreign-modules.txt', encoding='utf-8') as f:
+                  for line in f:
+                      line = line.strip()
+                      if line and not line.startswith('#'):
+                          foreign.add(line)
+          except Exception as e:
+              print(f'No foreign-modules.txt: {e}')
+
+          print(f'Foreign modules: {sorted(foreign)}')
+
+          with open('build/plugins.json', encoding='utf-8') as f:
+              gen_data = json.loads(f.read())
+
+          arabic = [i for i in gen_data if i.get('internalName') not in foreign]
+          external = [i for i in gen_data if i.get('internalName') in foreign]
+
+          with open('build/plugins.json', 'w', encoding='utf-8') as f:
+              json.dump(arabic, f, indent=4, ensure_ascii=False)
+
+          with open('build/plugins-foreign.json', 'w', encoding='utf-8') as f:
+              json.dump(external, f, indent=4, ensure_ascii=False)
+
+          print(f'Split catalogues: {len(arabic)} Arabic, {len(external)} foreign')
+          "
+
+          python3 -c "
+          import json, os
+
+          repo_data = {
+              'name': '3rabi عربي',
+              'description': 'مشاهدة الافلام والمسلسلات تجربة خالية من الاعلانات',
+              'iconUrl': 'https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/icon.png',
+              'manifestVersion': 1,
+              'pluginLists': [
+                  'https://raw.githubusercontent.com/${{ github.repository }}/builds/plugins.json',
+                  'https://raw.githubusercontent.com/${{ github.repository }}/builds/plugins-foreign.json'
+              ]
+          }
+
+          workspace = os.environ.get('GITHUB_WORKSPACE', '')
+
+          with open(os.path.join(workspace, 'builds', 'repo.json'), 'w', encoding='utf-8') as f:
+              json.dump(repo_data, f, indent=4, ensure_ascii=False)
+
+          foreign_repo = {
+              'name': '3rabi Foreign',
+              'description': 'Foreign providers: English movies, series and anime',
+              'iconUrl': 'https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/icon.png',
+              'manifestVersion': 1,
+              'pluginLists': [
+                  'https://raw.githubusercontent.com/${{ github.repository }}/builds/plugins-foreign.json'
+              ]
+          }
+
+          with open(os.path.join(workspace, 'builds', 'repo-foreign.json'), 'w', encoding='utf-8') as f:
+              json.dump(foreign_repo, f, indent=4, ensure_ascii=False)
+          "
+
+          cp build/plugins.json \
+            $GITHUB_WORKSPACE/builds/plugins.json \
+            || echo "No plugins.json found in build"
+
+          cp build/plugins-foreign.json \
+            $GITHUB_WORKSPACE/builds/plugins-foreign.json \
+            || echo "No plugins-foreign.json found in build"
+
+          find . -type f -name "*.cs3" \
+            -exec cp {} $GITHUB_WORKSPACE/builds/ \; \
+            || echo "No .cs3 files found"
+
+      - name: Push builds
+        working-directory: "builds"
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+
+          git add .
+
+          if ! git diff --cached --quiet; then
+            git commit --amend -m "Build $GITHUB_SHA" \
+              || git commit -m "Build $GITHUB_SHA"
+
+            git push --force origin HEAD:builds
+          else
+            echo "No changes to push"
+          fi
