@@ -62,7 +62,9 @@ class CimaNowProvider : MainAPI() {
         var title = this.selectFirst("picture img")?.attr("alt")?.trim()
         if (title.isNullOrBlank()) title = this.selectFirst("img")?.attr("alt")?.trim()
         if (title.isNullOrBlank()) return null
-        var poster = this.selectFirst("picture img")?.attr("data-src")?.takeIf { it.isNotBlank() }
+        var poster = this.selectFirst("figure img")?.attr("src")?.takeIf { it.isNotBlank() }
+            ?: this.selectFirst("figure img")?.attr("data-src")?.takeIf { it.isNotBlank() }
+            ?: this.selectFirst("picture img")?.attr("data-src")?.takeIf { it.isNotBlank() }
             ?: this.selectFirst("img")?.attr("data-src")?.takeIf { it.isNotBlank() }
             ?: this.selectFirst("picture img")?.attr("src")?.takeIf { it.isNotBlank() }
             ?: this.selectFirst("img")?.attr("src")?.takeIf { it.isNotBlank() }
