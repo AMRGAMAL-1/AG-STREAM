@@ -297,7 +297,7 @@ class YoutubeProvider(
 
                 val currentList = if (isSearchContext) searchShorts else homeShorts
                 val episodeNum = currentList.size + 1
-                val contextTag = if (isSearchContext) "&ctx=search" else "&ctx=home"
+                val contextTag = if (isSearchContext) "?ctx=search" else "?ctx=home"
                 val finalUrl = "$mainUrl/shorts/$videoId$contextTag"
 
                 if (currentList.none { it.data == finalUrl }) {
@@ -373,7 +373,7 @@ class YoutubeProvider(
                 if (isShorts) {
                     val currentList = if (isSearchContext) searchShorts else homeShorts
                     val episodeNum = currentList.size + 1
-                    val contextTag = if (isSearchContext) "&ctx=search" else "&ctx=home"
+                    val contextTag = if (isSearchContext) "?ctx=search" else "?ctx=home"
                     val finalUrl = "$mainUrl/shorts/$videoId$contextTag"
                     poster = "https://i.ytimg.com/vi/$videoId/oar2.jpg"
                     if (currentList.none { it.data == finalUrl }) {
@@ -942,7 +942,7 @@ override suspend fun load(url: String): LoadResponse {
         Log.d(name, "load called for url=$url")
         if (url.contains("/shorts/")) {
             val videoId = url.extractYoutubeId() ?: "video"
-            val useSearchList = url.contains("&ctx=search")
+            val useSearchList = url.contains("ctx=search")
             val sourceList = if (useSearchList) searchShorts else homeShorts
             val targetEpisodes = sourceList.toMutableList()
             var currentEp = targetEpisodes.find { it.data.extractYoutubeId() == videoId }
@@ -1332,6 +1332,121 @@ override suspend fun load(url: String): LoadResponse {
         }
     }
 
+    private fun itagQuality(itag: Int?): Int {
+        return when (itag) {
+            17 -> 144
+            36 -> 240
+            18 -> 360
+            22 -> 720
+            137, 248, 399, 299 -> 1080
+            138, 266, 398 -> 2160
+            else -> Qualities.Unknown.value
+        }
+    }
+
+    private fun labelQuality(label: String?, itag: Int?): Int {
+        val q = Regex("""(\d{3,4})\s*p""").find(label ?: "")?.groupValues?.get(1)?.toIntOrNull()
+        if (q != null && q in 144..4320) return q
+        return itagQuality(itag)
+    }
+
+    private suspend fun resolveAndroidStreams(
+        videoId: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        try {
+            val key = savedApiKey?.takeIf { it.isNotBlank() } ?: "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+            val payload = mapOf(
+                "context" to mapOf(
+                    "client" to mapOf(
+                        "clientName" to "ANDROID",
+                        "clientVersion" to "20.10.38",
+                        "androidSdkVersion" to 30,
+                        "hl" to "en",
+                        "gl" to "US"
+                    )
+                ),
+                "videoId" to videoId
+            )
+            val root = app.post(
+                "$mainUrl/youtubei/v1/player?key=$key", json = payload,
+                headers = mapOf("User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"),
+                interceptor = ytInterceptor
+            ).parsedSafe<Map<String, Any>>() ?: return false
+            val sd = root["streamingData"] as? Map<*, *> ?: return false
+            var emitted = false
+            val prog = (sd["formats"] as? List<*>)?.mapNotNull { it as? Map<*, *> } ?: emptyList()
+            for (f in prog) {
+                val url = (f["url"] as? String)?.takeIf { it.startsWith("http") } ?: continue
+                if (isSampleUrl(url)) continue
+                val mime = (f["mimeType"] as? String) ?: ""
+                if (!mime.contains("video/")) continue
+                val q = labelQuality(f["qualityLabel"] as? String, (f["itag"] as? Number)?.toInt())
+                val tag = (f["qualityLabel"] as? String) ?: "${q}p"
+                try {
+                    callback(newExtractorLink(source = this.name, name = "YouTube ($tag)", url = url) {
+                        this.referer = "https://www.youtube.com/"
+                        this.headers = mapOf("Referer" to "https://www.youtube.com/", "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36")
+                        this.quality = q
+                        this.type = ExtractorLinkType.VIDEO
+                    })
+                    emitted = true
+                } catch (_: Exception) {}
+            }
+            if (!emitted) {
+                val adapt = (sd["adaptiveFormats"] as? List<*>)?.mapNotNull { it as? Map<*, *> } ?: emptyList()
+                val best = adapt.filter {
+                    val u = (it["url"] as? String) ?: return@filter false
+                    u.startsWith("http") && ((it["mimeType"] as? String) ?: "").contains("video/mp4") && !isSampleUrl(u)
+                }.sortedByDescending { labelQuality(it["qualityLabel"] as? String, (it["itag"] as? Number)?.toInt()) }.firstOrNull()
+                if (best != null) {
+                    val url = (best["url"] as? String) ?: ""
+                    val q = labelQuality(best["qualityLabel"] as? String, (best["itag"] as? Number)?.toInt())
+                    val tag = (best["qualityLabel"] as? String) ?: "${q}p"
+                    try {
+                        callback(newExtractorLink(source = this.name, name = "YouTube ($tag)", url = url) {
+                            this.referer = "https://www.youtube.com/"
+                            this.headers = mapOf("Referer" to "https://www.youtube.com/", "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36")
+                            this.quality = q
+                            this.type = ExtractorLinkType.VIDEO
+                        })
+                        emitted = true
+                    } catch (_: Exception) {}
+                }
+            }
+            if (emitted) {
+                try {
+                    val tracks = (((root["captions"] as? Map<*, *>)?.get("playerCaptionsTracklistRenderer") as? Map<*, *>)?.get("captionTracks") as? List<*>)
+                        ?.mapNotNull { it as? Map<*, *> } ?: emptyList()
+                    val seen = mutableSetOf<String>()
+                    for (t in tracks) {
+                        val base = (t["baseUrl"] as? String)?.takeIf { it.startsWith("http") } ?: continue
+                        val lang = (t["languageCode"] as? String)?.takeIf { it.isNotBlank() } ?: "sub"
+                        val nm = ((t["name"] as? Map<*, *>)?.get("simpleText") as? String)
+                            ?: (((t["name"] as? Map<*, *>)?.get("runs") as? List<*>)?.mapNotNull { (it as? Map<*, *>)?.get("text") as? String }?.joinToString("")?.takeIf { it.isNotBlank() })
+                            ?: lang
+                        val vtt = "$base&fmt=vtt"
+                        if (seen.add(vtt)) {
+                            try { subtitleCallback(SubtitleFile("$nm ($lang)", vtt)) } catch (_: Exception) {}
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            Log.d(name, "android resolve emitted=$emitted for $videoId")
+            return emitted
+        } catch (e: Exception) {
+            Log.d(name, "android resolve failed: ${e.message}")
+            return false
+        }
+    }
+
+    private fun isSampleUrl(u: String): Boolean {
+        val l = u.lowercase()
+        return l.contains("test-videos.co.uk") || l.contains("bigbuckbunny") ||
+            l.contains("sample.mp4") || l.contains("sample-") || l.contains("placeholder")
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -1339,6 +1454,7 @@ override suspend fun load(url: String): LoadResponse {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val videoId = data.extractYoutubeId() ?: data
+        if (resolveAndroidStreams(videoId, subtitleCallback, callback)) return true
         val fullUrl = "https://www.youtube.com/watch?v=$videoId"
         val context = CloudStreamApp.context
         val playerType = if (context != null) {
