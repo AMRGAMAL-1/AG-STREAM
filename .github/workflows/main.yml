@@ -326,7 +326,7 @@ jobs:
           import json, os
 
           repo_data = {
-              'name': '3rabi عربي',
+              'name': 'AG-STREAM',
               'description': 'مشاهدة الافلام والمسلسلات تجربة خالية من الاعلانات',
               'iconUrl': 'https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/icon.png',
               'manifestVersion': 1,
@@ -342,7 +342,7 @@ jobs:
               json.dump(repo_data, f, indent=4, ensure_ascii=False)
 
           foreign_repo = {
-              'name': '3rabi Foreign',
+              'name': 'AG-STREAM Foreign',
               'description': 'Foreign providers: English movies, series and anime',
               'iconUrl': 'https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/main/icon.png',
               'manifestVersion': 1,
