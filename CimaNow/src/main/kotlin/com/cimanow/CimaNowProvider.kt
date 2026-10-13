@@ -495,7 +495,6 @@ class CimaNowProvider : MainAPI() {
             null
         }
     }
-    // ---------- Radical fix helpers: title cleaning + trap solver + Vidrock fallback ----------
 
     /** Strip Arabic wrappers (فيلم/مسلسل/مترجم/مدبلج/...) so external lookups use the English core. */
     private fun cleanEnglishTitle(raw: String): Pair<String, Int?> {
@@ -548,8 +547,6 @@ class CimaNowProvider : MainAPI() {
             return null
         }
     }
-
-    // ---------- Vidrock fallback (bypasses freex2line/countdown/Cloudflare entirely) ----------
     private val vidMapper = ObjectMapper()
     private val VIDROCK_GCM_KEY_HEX =
         "7f3e9c2a8b5d1f4e6a9c3b7d2e5f8a1c4b6d9e2f5a8c1b4d7e9f2a5c8b1d4e7f"
@@ -625,7 +622,6 @@ class CimaNowProvider : MainAPI() {
     ): Boolean {
         try {
             if (!dec.startsWith("http") || dec.contains("sample", true) || dec.contains("bigbuckbunny", true)) return false
-            // Playlist JSON [{resolution,url}] ?
             if (dec.contains("/playlist/") && !dec.contains(".m3u8") && !Regex("""\.mp4([?#]|$)""").containsMatchIn(dec)) {
                 try {
                     val t = app.get(dec, referer = "https://vidrock.net/", timeout = 20, headers = mapOf("Accept" to "application/json,*/*")).text
@@ -704,7 +700,6 @@ class CimaNowProvider : MainAPI() {
                 if (dec.equals("Unavailable", ignoreCase = true)) continue
                 if (emitVidrockUrl(dec, entry.key, callback)) ok = true
             }
-            // Vidrock subtitles (best-effort, movie + tv)
             if (ok) {
                 try {
                     val subApi = if (isSeries) "https://sub.vdrk.site/v2/tv/$tmdb/${season ?: 1}/${episode ?: 1}"
@@ -811,8 +806,6 @@ class CimaNowProvider : MainAPI() {
                     if (next.isNullOrBlank()) {
                         Log.d(TAG, "mint hops exhausted at ${finalUrl.take(140)}")
                         diagnoseChallenge(body, "mint $host")
-                        // Stage-1 trap pages are JS-rendered (no meta/js redirect to follow).
-                        // Solve the xor trap in-JVM to reach the countdown page + pig URL.
                         if (body.length > 20000 && body.contains("trap_")) {
                             try {
                                 solveTrapStage1(body)?.let { solved ->
@@ -1026,8 +1019,6 @@ class CimaNowProvider : MainAPI() {
                 }
             }
             if (nativeEmitted) return true
-            // Native mint failed (protection now needs JS countdown + trusted click).
-            // Radical fallback: cleaned title -> Cinemeta moviedb_id -> Vidrock streams.
             try {
                 val detailUrl = if (data.contains("/watching/")) detailOf(data) else data
                 val isSeries = detailUrl.contains("/selary/")
