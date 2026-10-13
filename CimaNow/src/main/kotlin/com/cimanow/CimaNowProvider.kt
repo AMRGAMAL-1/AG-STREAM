@@ -145,6 +145,13 @@ class CimaNowProvider : MainAPI() {
         return Regex("""-ج(\d+)-""").find(decoded)?.groupValues?.get(1)?.toIntOrNull()
     }
 
+    /** Slug without season/episode markers, to tell same-show seasons apart from other shows. */
+    private fun slugBase(url: String): String {
+        val decoded = try { URLDecoder.decode(url, "UTF-8") } catch (_: Exception) { url }
+        val slug = decoded.substringAfter("/selary/", decoded).trim('/').substringBefore("/watching/")
+        return slug.substringBefore("-ج").substringBefore("-ح")
+    }
+
     private fun episodeFromSlug(url: String): Int? {
         val decoded = try { URLDecoder.decode(url, "UTF-8") } catch (_: Exception) { url }
         return Regex("""-ح(\d+)-""").find(decoded)?.groupValues?.get(1)?.toIntOrNull()
@@ -221,9 +228,11 @@ class CimaNowProvider : MainAPI() {
                 })
             }
         }
+        val showBase = slugBase(url)
         val seasonLinks = doc.select("a[href*=\"/selary/\"]").map { it.attr("href") }
             .filter { it.isNotBlank() }.distinct()
             .map { fixUrl(it) }.filter { it != url }
+            .filter { slugBase(it) == showBase }
             .filter { (seasonFromSlug(it) ?: -1) != seasonNum }
             .distinctBy { seasonFromSlug(it) }
 
@@ -481,7 +490,7 @@ class CimaNowProvider : MainAPI() {
     private suspend fun fetchHop(url: String, referer: String, tag: String): Pair<String, String>? {
         return try {
             val via = app.get(url, headers = browserHeaders, referer = referer,
-                interceptor = cfKiller, timeout = 15, allowRedirects = true)
+                interceptor = cfKiller, timeout = 10, allowRedirects = true)
             Log.d(TAG, "$tag final=${via.url.take(200)}")
             if (via.url.contains("token=") && via.url.contains("watching")) {
                 return Pair(via.url, via.text)
@@ -496,16 +505,15 @@ class CimaNowProvider : MainAPI() {
         }
     }
 
-    /** Strip Arabic wrappers (فيلم/مسلسل/مترجم/مدبلج/...) so external lookups use the English core. */
+    /** Keep only Latin-script runs (drops فيلم/مترجم/الموسم/الحلقة/... wrappers entirely). */
     private fun cleanEnglishTitle(raw: String): Pair<String, Int?> {
-        var s = raw.trim()
-        val year = Regex("""(19\d{2}|20\d{2})""").find(s)?.groupValues?.get(1)?.toIntOrNull()
-        s = s.replace(Regex("""^(فيلم|مسلسل|مسرحية|برنامج|الحلقة|حلقة)\s+"""), "")
-        s = s.replace(Regex("""\s*(مترجم|مترجمة|مترجمه|مدبلج|مدبلجة|مدبلجه|مصري|مصرية|مصرى|بالعربية|للعربية|اون\s*لاين|اونلاين|بجودة\s*عالية|بجوده\s*عاليه|كامل|كاملة|HD|FHD|CAM|TS|2026|رمضان)\s*""", RegexOption.IGNORE_CASE), " ")
-        s = s.replace(Regex("""[|–—_/:]+"""), " ")
-        s = s.replace(Regex("""\s*(19\d{2}|20\d{2})\s*"""), " ")
-        s = s.replace(Regex("""\s+"""), " ").trim(' ', '-', ':', '|')
-        return s to year
+        val year = Regex("""(19\d{2}|20\d{2})""").find(raw)?.groupValues?.get(1)?.toIntOrNull()
+        val runs = Regex("""[A-Za-z0-9][A-Za-z0-9 :.'\-&!]*[A-Za-z0-9]|[A-Za-z0-9]""").findAll(raw)
+            .map { it.value.replace(Regex("""\s+"""), " ").trim(' ', '-', ':', '|', '.', '\'') }
+            .filter { it.length >= 2 && it.any { c -> c.code < 128 && c.isLetter() } }
+            .toList()
+        val core = runs.joinToString(" ").replace(Regex("""\s*(19\d{2}|20\d{2})\s*"""), " ").replace(Regex("""\s+"""), " ").trim()
+        return core to year
     }
 
     private fun normTitle(s: String): String {
@@ -547,6 +555,7 @@ class CimaNowProvider : MainAPI() {
             return null
         }
     }
+
     private val vidMapper = ObjectMapper()
     private val VIDROCK_GCM_KEY_HEX =
         "7f3e9c2a8b5d1f4e6a9c3b7d2e5f8a1c4b6d9e2f5a8c1b4d7e9f2a5c8b1d4e7f"
@@ -574,7 +583,9 @@ class CimaNowProvider : MainAPI() {
         } catch (_: Exception) { null }
     }
 
-    /** Cleaned English title -> Cinemeta -> moviedb_id (no API key needed). */
+    /** Cleaned English title -> Cinemeta -> moviedb_id (no API key needed).
+     *  Tries every tt candidate with per-candidate year check instead of aborting
+     *  on the first mismatch (e.g. shorts catalogued under a wrong year). */
     private suspend fun cinemetaMoviedbId(clean: String, year: Int?, isSeries: Boolean): Int? {
         try {
             if (clean.length < 3 || !clean.any { it.code < 128 && it.isLetter() }) return null
@@ -586,29 +597,29 @@ class CimaNowProvider : MainAPI() {
             val metas = root.get("metas") ?: return null
             if (!metas.isArray || metas.size() == 0) return null
             val want = normTitle(clean)
-            var bestId: String? = null
-            for (m in metas) {
-                val id = m.get("id")?.asText() ?: continue
-                if (!id.startsWith("tt")) continue
-                val nm = m.get("name")?.asText() ?: continue
-                if (normTitle(nm) == want) { bestId = id; break }
+            val cands = metas.filter { it.get("id")?.asText()?.startsWith("tt") == true }
+                .sortedBy { if (normTitle(it.get("name")?.asText() ?: "") == want) 0 else 1 }
+            if (cands.isEmpty()) return null
+            for (m in cands) {
+                try {
+                    val id = m.get("id")?.asText() ?: continue
+                    val metaTxt = app.get("https://v3-cinemeta.strem.io/meta/$kind/$id.json", timeout = 15).text
+                    if (metaTxt.isBlank()) continue
+                    val meta = try { vidMapper.readTree(metaTxt).get("meta") } catch (_: Exception) { continue } ?: continue
+                    if (year != null) {
+                        val my = meta.get("year")?.asText()?.filter { it.isDigit() }?.toIntOrNull()
+                            ?: meta.get("releaseInfo")?.asText()?.let { Regex("""(19\d{2}|20\d{2})""").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+                        if (my != null && kotlin.math.abs(my - year) > 1) {
+                            Log.d(TAG, "cinemeta year mismatch $my vs $year for $clean ($id), trying next")
+                            continue
+                        }
+                    }
+                    val tmdb = meta.get("moviedb_id")?.asInt()
+                    if (tmdb != null && tmdb > 0) return tmdb
+                } catch (_: Exception) { continue }
             }
-            if (bestId == null) {
-                bestId = metas.firstOrNull { it.get("id")?.asText()?.startsWith("tt") == true }
-                    ?.get("id")?.asText() ?: return null
-            }
-            val metaTxt = app.get("https://v3-cinemeta.strem.io/meta/$kind/$bestId.json", timeout = 15).text
-            if (metaTxt.isBlank()) return null
-            val meta = try { vidMapper.readTree(metaTxt).get("meta") } catch (_: Exception) { return null } ?: return null
-            if (year != null) {
-                val my = meta.get("year")?.asText()?.filter { it.isDigit() }?.toIntOrNull()
-                    ?: meta.get("releaseInfo")?.asText()?.let { Regex("""(19\d{2}|20\d{2})""").find(it)?.groupValues?.get(1)?.toIntOrNull() }
-                if (my != null && kotlin.math.abs(my - year) > 1) {
-                    Log.d(TAG, "cinemeta year mismatch $my vs $year for $clean")
-                    return null
-                }
-            }
-            return meta.get("moviedb_id")?.asInt()
+            Log.d(TAG, "vidrock fallback: no moviedb_id for '$clean'")
+            return null
         } catch (e: Exception) {
             Log.d(TAG, "cinemeta lookup failed for '$clean': ${e.message}")
             return null
@@ -673,15 +684,18 @@ class CimaNowProvider : MainAPI() {
         try {
             val (clean, year) = cleanEnglishTitle(rawTitle)
             Log.d(TAG, "vidrock fallback clean='$clean' year=$year series=$isSeries")
-            val tmdb = cinemetaMoviedbId(clean, year, isSeries) ?: run {
-                Log.d(TAG, "vidrock fallback: no moviedb_id for '$clean'")
-                return false
+            var tmdb = cinemetaMoviedbId(clean, year, isSeries)
+            var useTv = isSeries
+            if (tmdb == null && !isSeries) {
+                tmdb = cinemetaMoviedbId(clean, year, true)
+                useTv = tmdb != null
             }
-            val api = if (isSeries) "https://vidrock.net/api/tv/$tmdb/${season ?: 1}/${episode ?: 1}"
+            if (tmdb == null) return false
+            val api = if (useTv) "https://vidrock.net/api/tv/$tmdb/${season ?: 1}/${episode ?: 1}"
             else "https://vidrock.net/api/movie/$tmdb"
             Log.d(TAG, "vidrock api $api")
             val txt = try {
-                app.get(api, referer = "https://vidrock.net/", timeout = 20, headers = mapOf("Accept" to "application/json", "Origin" to "https://vidrock.net")).text
+                app.get(api, referer = "https://vidrock.net/", timeout = 15, headers = mapOf("Accept" to "application/json", "Origin" to "https://vidrock.net")).text
             } catch (e: Exception) {
                 Log.d(TAG, "vidrock api failed: ${e.message}")
                 return false
@@ -702,9 +716,9 @@ class CimaNowProvider : MainAPI() {
             }
             if (ok) {
                 try {
-                    val subApi = if (isSeries) "https://sub.vdrk.site/v2/tv/$tmdb/${season ?: 1}/${episode ?: 1}"
+                    val subApi = if (useTv) "https://sub.vdrk.site/v2/tv/$tmdb/${season ?: 1}/${episode ?: 1}"
                     else "https://sub.vdrk.site/v2/movie/$tmdb"
-                    val stxt = app.get(subApi, referer = "https://vidrock.net/", timeout = 10).text
+                    val stxt = app.get(subApi, referer = "https://vidrock.net/", timeout = 5).text
                     if (!stxt.isNullOrBlank()) {
                         val sarr = try { vidMapper.readTree(stxt) } catch (_: Exception) { null }
                         if (sarr != null && sarr.isArray) {
@@ -908,11 +922,27 @@ class CimaNowProvider : MainAPI() {
         Log.d(TAG, "loadLinks $data")
         try {
             var watchUrl = data
+            var preTitle: String? = null
+            var preIsSeries = false
+            var preSeason: Int? = null
+            var preEpisode: Int? = null
+            var vidrockTried = false
             if (!watchUrl.contains("token=")) {
                 try {
                     val detailUrl = if (watchUrl.contains("/watching/")) detailOf(watchUrl) else data
+                    preIsSeries = detailUrl.contains("/selary/") || seasonFromSlug(detailUrl) != null || episodeFromSlug(detailUrl) != null
+                    preSeason = seasonFromSlug(detailUrl)
+                    preEpisode = episodeFromSlug(detailUrl)
                     val d0 = app.get(detailUrl, headers = browserHeaders, referer = mainUrl, interceptor = cfKiller, timeout = 15)
                     val detailHtml = d0.text
+                    preTitle = try { d0.document.selectFirst("h1")?.text()?.trim()?.takeIf { it.isNotBlank() } } catch (_: Exception) { null }
+                    if (!preTitle.isNullOrBlank()) {
+                        val (fastClean, _) = cleanEnglishTitle(preTitle!!)
+                        if (fastClean.length >= 3) {
+                            vidrockTried = true
+                            if (resolveViaVidrock(preTitle!!, preIsSeries, preSeason, preEpisode, subtitleCallback, callback)) return true
+                        }
+                    }
                     try {
                         if (harvestDetailPage(detailHtml, detailUrl, subtitleCallback, callback)) return true
                     } catch (e: Exception) {
@@ -1019,28 +1049,33 @@ class CimaNowProvider : MainAPI() {
                 }
             }
             if (nativeEmitted) return true
-            try {
-                val detailUrl = if (data.contains("/watching/")) detailOf(data) else data
-                val isSeries = detailUrl.contains("/selary/")
-                var rawTitle: String? = null
+            if (!vidrockTried) {
                 try {
-                    val dDoc = app.get(detailUrl, headers = browserHeaders, referer = mainUrl, interceptor = cfKiller, timeout = 15).document
-                    rawTitle = dDoc.selectFirst("h1")?.text()?.trim()?.takeIf { it.isNotBlank() }
-                } catch (_: Exception) {}
-                if (rawTitle.isNullOrBlank()) {
-                    rawTitle = try { URLDecoder.decode(detailUrl.substringAfter("cc/").substringBefore("/watching").replace("-", " "), "UTF-8") } catch (_: Exception) { null }
-                }
-                if (!rawTitle.isNullOrBlank()) {
-                    val season = try { seasonFromSlug(detailUrl) } catch (_: Exception) { null }
-                    val episode = try { episodeFromSlug(detailUrl) } catch (_: Exception) { null }
-                    if (resolveViaVidrock(rawTitle!!, isSeries, season, episode, subtitleCallback, callback)) {
-                        return true
+                    val detailUrl = if (data.contains("/watching/")) detailOf(data) else data
+                    val isSeries = preIsSeries || detailUrl.contains("/selary/") ||
+                        seasonFromSlug(detailUrl) != null || episodeFromSlug(detailUrl) != null
+                    var rawTitle: String? = preTitle
+                    if (rawTitle.isNullOrBlank()) {
+                        try {
+                            val dDoc = app.get(detailUrl, headers = browserHeaders, referer = mainUrl, interceptor = cfKiller, timeout = 15).document
+                            rawTitle = dDoc.selectFirst("h1")?.text()?.trim()?.takeIf { it.isNotBlank() }
+                        } catch (_: Exception) {}
                     }
-                } else {
-                    Log.d(TAG, "fallback skipped: no title for $detailUrl")
+                    if (rawTitle.isNullOrBlank()) {
+                        rawTitle = try { URLDecoder.decode(detailUrl.substringAfter("cc/").substringBefore("/watching").replace("-", " "), "UTF-8") } catch (_: Exception) { null }
+                    }
+                    if (!rawTitle.isNullOrBlank()) {
+                        val season = preSeason ?: seasonFromSlug(detailUrl)
+                        val episode = preEpisode ?: episodeFromSlug(detailUrl)
+                        if (resolveViaVidrock(rawTitle!!, isSeries, season, episode, subtitleCallback, callback)) {
+                            return true
+                        }
+                    } else {
+                        Log.d(TAG, "fallback skipped: no title for $detailUrl")
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "fallback failed: ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.d(TAG, "fallback failed: ${e.message}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "loadLinks error: ${e.message}", e)
