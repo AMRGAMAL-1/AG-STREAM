@@ -66,8 +66,14 @@ class CimaNowProvider : MainAPI() {
             ?: this.selectFirst("img")?.attr("data-src")?.takeIf { it.isNotBlank() }
             ?: this.selectFirst("picture img")?.attr("src")?.takeIf { it.isNotBlank() }
             ?: this.selectFirst("img")?.attr("src")?.takeIf { it.isNotBlank() }
-        if (poster != null && (poster.contains("لوجو") || poster.lowercase().contains("logo"))) {
-            poster = null
+        if (poster != null) {
+            val pl = poster.lowercase()
+            if (poster.contains("/wp-content/themes/") || pl.endsWith(".svg") ||
+                pl.contains("/logo") || pl.contains("logo-") || pl.contains("-logo.") ||
+                pl.contains("_logo") || pl.contains("placeholder")
+            ) {
+                poster = null
+            }
         }
         if (poster != null) poster = fixUrl(poster)
 
