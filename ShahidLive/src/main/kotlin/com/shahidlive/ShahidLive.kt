@@ -451,26 +451,30 @@ class ShahidLiveProvider : MainAPI() {
         val type = parsed.first
         val id = parsed.second
         val rest = parsed.third
-        coroutineScope {
-            val tasks = mutableListOf<suspend () -> Unit>()
-            if (type == "movie") {
-                val imdb = imdbId(id)
-                if (!imdb.isNullOrBlank()) {
-                    tasks.add({ resolveGeneric("https://vaplayer.ru/embed/movie/$imdb?lang=ar", "VAPlayer (الأساسي)", mainUrl, subtitleCallback, callback) })
-                    tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/movie/$imdb", "VidSrc TO", subtitleCallback, callback) })
-                    tasks.add({ resolve2Embed("https://www.2embed.cc/embed/$imdb", "2Embed", imdb, null, null, subtitleCallback, callback) })
-                } else {
-                    tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/movie/$id?lang=ar", "VidSrc TO", subtitleCallback, callback) })
-                }
+        // Working lineup (verified): VAPlayer + VidSrc TO (vsembed chain) + 2Embed
+        // (vidsrc.me / multiembed / autoembed time out on all networks -> dropped,
+        //  core 2Embed extractor fabricates a dead streamcash URL -> resolved manually).
+        val tasks = mutableListOf<suspend () -> Unit>()
+        if (type == "movie") {
+            val imdb = imdbId(id)
+            if (!imdb.isNullOrBlank()) {
+                tasks.add({ resolveGeneric("https://vaplayer.ru/embed/movie/$imdb?lang=ar", "VAPlayer (الأساسي)", mainUrl, subtitleCallback, callback) })
+                tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/movie/$imdb", "VidSrc TO", subtitleCallback, callback) })
+                tasks.add({ resolve2Embed("https://www.2embed.cc/embed/$imdb", "2Embed", imdb, null, null, subtitleCallback, callback) })
             } else {
-                val season = rest.getOrNull(0) ?: return false
-                val episode = rest.getOrNull(1) ?: return false
-                tasks.add({ resolveGeneric("https://vaplayer.ru/embed/tv/$id/$season/$episode?lang=ar", "VAPlayer (الأساسي)", mainUrl, subtitleCallback, callback) })
-                tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/tv/$id/$season/$episode?lang=ar", "VidSrc TO", subtitleCallback, callback) })
-                val seriesImdb = seriesImdbId(id)
-                tasks.add({ resolve2Embed("https://www.2embed.cc/embedtv/$id&s=$season&e=$episode", "2Embed", seriesImdb, season, episode, subtitleCallback, callback) })
+                tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/movie/$id?lang=ar", "VidSrc TO", subtitleCallback, callback) })
             }
-            if (tasks.isEmpty()) return false
+        } else {
+            val season = rest.getOrNull(0)
+            val episode = rest.getOrNull(1)
+            if (season == null || episode == null) return false
+            tasks.add({ resolveGeneric("https://vaplayer.ru/embed/tv/$id/$season/$episode?lang=ar", "VAPlayer (الأساسي)", mainUrl, subtitleCallback, callback) })
+            tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/tv/$id/$season/$episode?lang=ar", "VidSrc TO", subtitleCallback, callback) })
+            val seriesImdb = seriesImdbId(id)
+            tasks.add({ resolve2Embed("https://www.2embed.cc/embedtv/$id&s=$season&e=$episode", "2Embed", seriesImdb, season, episode, subtitleCallback, callback) })
+        }
+        if (tasks.isEmpty()) return false
+        coroutineScope {
             tasks.map { task ->
                 async { task() }
             }.awaitAll()
