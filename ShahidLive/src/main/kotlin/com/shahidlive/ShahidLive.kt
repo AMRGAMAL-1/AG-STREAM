@@ -451,9 +451,6 @@ class ShahidLiveProvider : MainAPI() {
         val type = parsed.first
         val id = parsed.second
         val rest = parsed.third
-        // Working lineup (verified): VAPlayer + VidSrc TO (vsembed chain) + 2Embed
-        // (vidsrc.me / multiembed / autoembed time out on all networks -> dropped,
-        //  core 2Embed extractor fabricates a dead streamcash URL -> resolved manually).
         val tasks = mutableListOf<suspend () -> Unit>()
         if (type == "movie") {
             val imdb = imdbId(id)
