@@ -28,8 +28,6 @@ class StarzPlayLiveProvider : MainAPI() {
 
     private val ua =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-
-    // ---------- API models ----------
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class ConfigResp(
         @JsonProperty("data") val data: List<CatConfig>? = null
@@ -126,8 +124,6 @@ class StarzPlayLiveProvider : MainAPI() {
         val logo: String?,
         val description: String?
     )
-
-    // ---------- category labels (ar) ----------
     private val categoryLabels = mapOf(
         "all" to "كل القنوات",
         "featured" to "متميز",
@@ -160,8 +156,6 @@ class StarzPlayLiveProvider : MainAPI() {
         "religious" to "ديني",
         "radio" to "راديو",
     )
-
-    // ---------- cache ----------
     private var cachedChannels: List<ChInfo> = emptyList()
     private var cacheTime = 0L
     private val CACHE_TTL = 6 * 60 * 60 * 1000L
@@ -174,7 +168,6 @@ class StarzPlayLiveProvider : MainAPI() {
 
     private fun logoOf(images: List<EpgImage>?): String? {
         if (images.isNullOrEmpty()) return null
-        // prefer active png/svg logo
         val active = images.firstOrNull { it.url?.contains("logos/live") == true }
         if (active?.url != null) return active.url
         return images.firstOrNull()?.url
@@ -215,7 +208,6 @@ class StarzPlayLiveProvider : MainAPI() {
                 if (!map.containsKey(c.slug)) map[c.slug] = c
             }
         }
-        // fallback: featured
         if (map.isEmpty()) {
             for (c in fetchCategoryChannels("featured", "ar")) {
                 if (!map.containsKey(c.slug)) map[c.slug] = c
@@ -238,8 +230,6 @@ class StarzPlayLiveProvider : MainAPI() {
         val list = if (request.data == "all") {
             all
         } else {
-            // category slug requested; channels already carry their own category,
-            // but featured overlaps so re-fetch that category directly for accuracy
             if (request.data == "featured") {
                 val feat = fetchCategoryChannels("featured", "ar")
                 if (feat.isNotEmpty()) feat else all.filter { it.category == request.data }
@@ -272,8 +262,6 @@ class StarzPlayLiveProvider : MainAPI() {
             this.plot = ch?.description
         }
     }
-
-    // ---------- guest + drm ----------
     private suspend fun ensureGuest(): Pair<String, String>? {
         val now = System.currentTimeMillis()
         if (guestSpx != null && guestGuid != null && now - guestTime < 20 * 60 * 60 * 1000L) {
@@ -347,9 +335,6 @@ class StarzPlayLiveProvider : MainAPI() {
             null
         }
     }
-
-    // Akamai edge auth for token (dPlay=token / ADMN) channels.
-    // hostName must be the manifest host (manifestHost query param), NOT the session host.
     private suspend fun getHdnts(pid: String, manifestHost: String, spx: String, guid: String, country: String = "EG"): String? {
         return try {
             val ts = System.currentTimeMillis()
@@ -391,8 +376,6 @@ class StarzPlayLiveProvider : MainAPI() {
             java.net.URL(mh).host
         } catch (_: Exception) { null }
     }
-
-    // session tk url -> direct clear manifest-host url + hdnts (no DRM, no session POST)
     private fun buildClearDashUrl(sessionUrl: String, manifestHost: String, hdnts: String): String? {
         return try {
             val path = sessionUrl.substringBefore("?").substringAfter("/out/v1", "")
@@ -417,7 +400,6 @@ class StarzPlayLiveProvider : MainAPI() {
     }
 
     private fun pickDash(streams: List<StreamUrl>): StreamUrl? {
-        // prefer Widevine DASH (Android). Fallback to any DASH/MPD.
         streams.firstOrNull { it.assetTypes?.contains("dash_widevine_spa") == true && !it.url.isNullOrBlank() }?.let { return it }
         streams.firstOrNull { it.format == "MPEG-DASH" && !it.url.isNullOrBlank() }?.let { return it }
         streams.firstOrNull { it.url?.contains(".mpd") == true }?.let { return it }
@@ -495,10 +477,6 @@ class StarzPlayLiveProvider : MainAPI() {
         )
 
         var emitted = false
-
-        // ---- 0) Clear DASH for token (ADMN) channels: manifest host + hdnts, no DRM ----
-        // HLS here is Apple FairPlay (skd://) and never works on Linux/Android,
-        // so we intentionally do NOT emit HLS anymore (it caused the white/distorted layer).
         val tkDash = streams.firstOrNull {
             !it.url.isNullOrBlank() && (
                 it.assetTypes?.any { a -> a.contains("_tk_") } == true ||
@@ -513,7 +491,6 @@ class StarzPlayLiveProvider : MainAPI() {
                     if (!hdnts.isNullOrBlank()) {
                         val clear = buildClearDashUrl(tkDash.url!!, mh, hdnts)
                         if (clear != null) {
-                            // verify it is really clear (no ContentProtection) before emitting
                             val mpd = try {
                                 app.get(clear, headers = mediaHeaders, timeout = 15).text
                             } catch (_: Exception) { "" }
@@ -542,8 +519,6 @@ class StarzPlayLiveProvider : MainAPI() {
                 Log.d(TAG, "clear dash failed $slug: ${e.message}")
             }
         }
-
-        // ---- 1) DASH Widevine (main, contains all qualities 1080/720/540/360 adaptive) ----
         if (!emitted && dash?.url != null) {
             val pid = dash.pid
             var token: String? = null
@@ -577,7 +552,6 @@ class StarzPlayLiveProvider : MainAPI() {
                     Log.d(TAG, "newDrmExtractorLink failed: ${e.message}")
                 }
             }
-            // fallback plain DASH (will fail without license, but keeps qualities visible)
             if (!emitted) {
                 callback.invoke(
                     newExtractorLink(
@@ -594,12 +568,6 @@ class StarzPlayLiveProvider : MainAPI() {
                 emitted = true
             }
         }
-
-        // NOTE: HLS here is Apple FairPlay (skd://) and cannot play on Linux/Android,
-        // it was the cause of the white/distorted layer + skd proxy errors.
-        // We intentionally emit DASH only (Widevine on Android, clear DASH for ADMN).
-
-        // ---- 3) any remaining DASH streams as fallback (never HLS FairPlay) ----
         if (!emitted) {
             for (s in streams) {
                 val u = s.url ?: continue
@@ -619,8 +587,6 @@ class StarzPlayLiveProvider : MainAPI() {
                 emitted = true
             }
         }
-
-        // program info for logs
         if (live != null) Log.d(TAG, "live now $slug: ${live.title} (${live.status})")
         return emitted
     }
