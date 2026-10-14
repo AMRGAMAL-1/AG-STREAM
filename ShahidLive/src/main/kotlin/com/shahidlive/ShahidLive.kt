@@ -92,7 +92,6 @@ class ShahidLiveProvider : MainAPI() {
     }
 
     private fun parseWatchUrl(url: String): Triple<String, Int, List<Int>>? {
-        // .../watch/movie/550  |  .../watch/tv/123  |  .../watch/tv/123/1/2
         val tail = url.substringAfter("/watch/").substringBefore("?").trim().trim('/')
         if (tail.isBlank()) return null
         val parts = tail.split("/")
@@ -295,8 +294,6 @@ class ShahidLiveProvider : MainAPI() {
         val type = parsed.first
         val id = parsed.second
         val rest = parsed.third
-
-        // Same 6 watch servers used by shahid.live itself
         val servers = mutableListOf<Pair<String, String>>()
         if (type == "movie") {
             val imdb = imdbId(id)
