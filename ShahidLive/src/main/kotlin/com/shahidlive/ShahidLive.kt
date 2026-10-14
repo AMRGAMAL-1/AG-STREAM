@@ -135,7 +135,6 @@ class ShahidLiveProvider : MainAPI() {
         }
 
         val episodes = mutableListOf<Episode>()
-        // Season 0 = specials (rarely have sources on embed hosts) -> start from season 1
         detail.seasons?.filter { (it.seasonNumber ?: 0) >= 1 }?.sortedBy { it.seasonNumber }?.forEach { season ->
             val sNum = season.seasonNumber ?: return@forEach
             val seasonText = try {
@@ -433,7 +432,6 @@ class ShahidLiveProvider : MainAPI() {
             inners.distinct().forEach { raw ->
                 var inner = raw.replace("&amp;", "&").trim()
                 if (inner.startsWith("//")) inner = "https:$inner"
-                // vidsrc.buzz needs IMDb ids (/embed/movie/tt...); rewrite numeric tmdb ids when known
                 if (!imdb.isNullOrBlank() && inner.contains("vidsrc.buzz")) {
                     inner = inner.replace(Regex("""/embed/movie/\d+"""), "/embed/movie/$imdb")
                     inner = inner.replace(Regex("""/embed/tv/\d+"""), "/embed/tv/$imdb")
@@ -453,9 +451,6 @@ class ShahidLiveProvider : MainAPI() {
         val type = parsed.first
         val id = parsed.second
         val rest = parsed.third
-        // Working lineup (verified): VAPlayer + VidSrc TO (vsembed chain) + 2Embed
-        // (vidsrc.me / multiembed / autoembed time out on all networks -> dropped,
-        //  core 2Embed extractor fabricates a dead streamcash URL -> resolved manually).
         coroutineScope {
             val tasks = mutableListOf<suspend () -> Unit>()
             if (type == "movie") {

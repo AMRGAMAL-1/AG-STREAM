@@ -117,7 +117,6 @@ class EgyBestProvider : MainAPI() {
         }
         val firstSeg = path.trim('/').substringBefore("/")
         val isListing = firstSeg in setOf("movies", "series", "episodes", "trending", "category", "page", "tag", "genre")
-        // Hub/listing pages (e.g. /series/<slug>/): no watch servers, but episode cards
         if (isListing || document.select("button[data-embed-url]").isEmpty()) {
             val cards = document.select("a.block[href]")
             if (cards.isNotEmpty() && (isListing || !url.contains("مشاهدة-"))) {
