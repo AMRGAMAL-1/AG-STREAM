@@ -65,21 +65,30 @@ class AnimeDay : MainAPI() {
     @Volatile
     private var resolvedApi: String? = null
 
+    @Volatile
+    private var lastConfigAttempt: Long = 0
+
     private suspend fun resolveApi(): String {
         resolvedApi?.let { return it }
-        val fetched = tryFetchCloudday()
-        if (fetched != null) {
-            synchronized(this) {
-                if (resolvedApi == null) resolvedApi = fetched
+        // The backup-config host is often unreachable; retry it at most every
+        // 5 minutes so a dead host can't stall every single request.
+        val now = System.currentTimeMillis()
+        if (now - lastConfigAttempt > 5 * 60 * 1000) {
+            lastConfigAttempt = now
+            val fetched = tryFetchCloudday()
+            if (fetched != null) {
+                synchronized(this) {
+                    if (resolvedApi == null) resolvedApi = fetched
+                }
+                return fetched
             }
-            return fetched
         }
         return DEFAULT_API
     }
 
     private suspend fun tryFetchCloudday(): String? {
         return try {
-            val body = app.get(CONFIG_API).text
+            val body = app.get(CONFIG_API, timeout = 8).text
             val obj = safeJson(body) ?: return null
             val data = obj.optJSONArray("data")
             val first = data?.optJSONObject(0)

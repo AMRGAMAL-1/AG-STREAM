@@ -16,7 +16,7 @@ cloudstream {
         "Cartoon"
     )
 
-    iconUrl = "https://www.anime-day.com/favicon.ico"
+    iconUrl = "https://www.anime-day.com/images/favicon_192.png"
 }
 
 tasks.matching { it.name == "make" }.configureEach {

@@ -43,6 +43,10 @@ class Animezid : MainAPI() {
         "Referer" to (referer ?: mainUrl)
     )
 
+    // =========================================================================
+    // Main page sections
+    // =========================================================================
+
     override val mainPage = mainPageOf(
         "$mainUrl/category.php?cat=new-anime-eps&page="    to "أحدث حلقات الأنمي",
         "$mainUrl/category.php?cat=new-eps&page="          to "أحدث الحلقات",
@@ -73,6 +77,10 @@ class Animezid : MainAPI() {
             hasNext = hasNext
         )
     }
+
+    // =========================================================================
+    // Search
+    // =========================================================================
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
@@ -120,6 +128,10 @@ class Animezid : MainAPI() {
         }
     }
 
+    // =========================================================================
+    // Load
+    // =========================================================================
+
     override suspend fun load(url: String): LoadResponse {
         val clean = url.removePrefix("SERIES::")
         return when {
@@ -137,6 +149,10 @@ class Animezid : MainAPI() {
             }
         }
     }
+
+    // -----------------------------------------------------------------
+    // Series from /series/{slug} page (AJAX season enumeration)
+    // -----------------------------------------------------------------
 
     private suspend fun buildSeriesFromSeriesPage(seriesUrl: String): LoadResponse {
         val doc = getPage(seriesUrl)
@@ -215,6 +231,10 @@ class Animezid : MainAPI() {
         }
     }
 
+    // -----------------------------------------------------------------
+    // Series from watch.php page (rich metadata + season tabs + AJAX)
+    // -----------------------------------------------------------------
+
     private suspend fun buildSeriesFromWatchPage(
         watchUrl: String,
         doc: Document
@@ -236,6 +256,8 @@ class Animezid : MainAPI() {
         val year = extractYearFromMeta(doc)
         val tags = extractTagsFromMeta(doc)
         val type = typeFromText(title, tags, default = TvType.Anime)
+
+        // Collect season tabs
         val seasonTabs = doc.select("nav.az-cinema-season-tabs a[data-season-link]")
             .mapNotNull { a ->
                 val seasonNum = a.attr("data-season").toIntOrNull() ?: return@mapNotNull null
@@ -248,11 +270,15 @@ class Animezid : MainAPI() {
 
         val episodes = mutableListOf<Episode>()
         val seen = mutableSetOf<String>()
+
+        // Determine which season is active (shown in episode grid)
         val activeSeasonHref = doc.selectFirst("a[data-season-link].is-active")
             ?.attr("href")?.let { fixUrl(it) }
         val activeSeasonNum = seasonTabs
             .firstOrNull { it.third == activeSeasonHref }?.first
             ?: seasonTabs.firstOrNull()?.first
+
+        // Episodes from the currently-displayed season grid
         if (activeSeasonNum != null) {
             doc.select("div.az-cinema-episode-grid a[role=listitem]").forEach { a ->
                 val href = a.attr("href")
@@ -265,6 +291,8 @@ class Animezid : MainAPI() {
                 })
             }
         }
+
+        // Fetch other seasons (and fill any missing episodes of active) via AJAX
         for ((seasonNum, seasonCount, seasonUrl) in seasonTabs) {
             var page = 1
             var done = seasonCount > 0 &&
@@ -322,6 +350,10 @@ class Animezid : MainAPI() {
         }
     }
 
+    // -----------------------------------------------------------------
+    // Movie from watch.php page
+    // -----------------------------------------------------------------
+
     private suspend fun buildMovieFromWatchPage(watchUrl: String, doc: Document): LoadResponse {
         val rawTitle = doc.selectFirst("h1")?.text()?.trim()
             ?: doc.selectFirst("meta[property=og:title]")?.attr("content")
@@ -349,6 +381,20 @@ class Animezid : MainAPI() {
         }
     }
 
+    // =========================================================================
+    // loadLinks
+    //
+    // 1) Protected web-playback API path (preferred):
+    //      GET  play.php?vid=XXX        → CSRF + session cookie
+    //      POST /web-playback/sessions  → session_id + sources[]
+    //      POST /sessions/{sid}/sources/{srcId}/resolve → launch_url
+    //      GET  launch_url (follow redirect) → final embed host
+    //      loadExtractor(finalUrl) or generic m3u8 fallback
+    //
+    // 2) Legacy fallback (old play.php layout):
+    //      button[data-embed] / iframe[src] → loadExtractor
+    // =========================================================================
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -373,6 +419,8 @@ class Animezid : MainAPI() {
         if (playResp.code !in 200..299) return false
         val playDoc = playResp.document
         val cookieHeader = buildCookieHeader(playResp.cookies)
+
+        // ----- Protected playback API -----
         val csrf = playDoc.selectFirst("[data-playback-csrf]")
             ?.attr("data-playback-csrf")
         val createUrl = playDoc.selectFirst("[data-playback-create-url]")
@@ -389,8 +437,14 @@ class Animezid : MainAPI() {
             )
             if (found) return true
         }
+
+        // ----- Legacy fallback: old button[data-embed] / iframe -----
         return loadViaLegacyEmbeds(playDoc, playUrl, subtitleCallback, callback)
     }
+
+    // -----------------------------------------------------------------
+    // Protected playback API
+    // -----------------------------------------------------------------
 
     private suspend fun loadViaProtectedApi(
         createUrl: String,
@@ -401,7 +455,7 @@ class Animezid : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val headers = playbackHeaders(csrf, playUrl, cookies)
+        val headers = playbackHeaders(csrf, playUrl, cookies, apiOrigin(createUrl, mainUrl))
 
         val sessionJson = retryPost(createUrl, headers, mapOf("content_id" to contentId), playUrl)
             ?: return false
@@ -416,6 +470,8 @@ class Animezid : MainAPI() {
             .distinctBy { it.optString("provider") + "|" + it.optString("quality") }
 
         var found = false
+
+        // Watch sources first (sequential + gentle pacing so the API never rate-limits us)
         for (src in embedded) {
             val ok = handlePlaybackSource(
                 src, createUrl, sessionId, headers, playUrl,
@@ -424,6 +480,9 @@ class Animezid : MainAPI() {
             if (ok) found = true
             delay(900L)
         }
+
+        // Download-type sources resolve to file-host pages; only surfaced when a
+        // real media URL can be produced, otherwise silently skipped.
         for (src in downloads.take(10)) {
             val ok = handlePlaybackSource(
                 src, createUrl, sessionId, headers, playUrl,
@@ -459,9 +518,13 @@ class Animezid : MainAPI() {
         if (srcId.isBlank()) return false
         val providerName = src.optString("provider")
         val qualityInt = src.optString("quality").toIntOrNull()
+
+        // 1) Resolve source → launch_url
         val resolveUrl = "$createUrl/$sessionId/sources/$srcId/resolve"
         val resolveJson = retryResolve(resolveUrl, headers, playUrl) ?: return false
         val launchUrl = resolveJson.optString("launch_url").ifBlank { return false }
+
+        // 2) Follow redirect to real embed host
         val finalUrl = try {
             val resp = app.get(
                 launchUrl,
@@ -474,10 +537,14 @@ class Animezid : MainAPI() {
         }
 
         if (finalUrl.isBlank() || isSelfHost(finalUrl)) return false
+
+        // Download sources that resolve straight to a media file can be used as-is.
         if (isDownload && looksLikeMedia(finalUrl)) {
             emitRawMediaLink(finalUrl, providerName, qualityInt, playUrl, callback)
             return true
         }
+
+        // 3) Try registered extractors (custom + built-ins)
         var extracted = false
         val extractorUrl = normalizeEmbedUrl(finalUrl)
         try {
@@ -487,10 +554,17 @@ class Animezid : MainAPI() {
                 callback(link)
             }
         } catch (_: Exception) {
+            // ignore
         }
+
+        // 4) Provider-aware m3u8/mp4 extraction from embed page
+        //    (direct regex + packed-JS decode for protected hosts)
         if (!extracted) {
             extracted = tryProviderExtract(finalUrl, providerName, playUrl, callback)
         }
+
+        // 5) Raw fallback only for direct media URLs; page-based hosts are dropped
+        //    so the menu never shows links that fail with HTTP-status errors.
         if (!extracted && looksLikeMedia(finalUrl)) {
             runCatching {
                 emitRawMediaLink(finalUrl, providerName, qualityInt, playUrl, callback)
@@ -549,6 +623,8 @@ class Animezid : MainAPI() {
         val texts = listOfNotNull(rawText, decodePacked)
 
         val host = getHostFromUrl(embedUrl)
+
+        // Prefer HLS (signed/plain), then direct mp4; dedupe across variants.
         val m3u8Set = linkedSetOf<String>()
         for (t in texts) {
             Regex("""https?://[^"'<>\s]+\.m3u8[^"'<>\s]*""")
@@ -574,6 +650,8 @@ class Animezid : MainAPI() {
             )
             return true
         }
+
+        // Fallback: direct mp4
         val mp4Set = linkedSetOf<String>()
         for (t in texts) {
             Regex("""https?://[^"'<>\s]+\.mp4[^"'<>\s]*""")
@@ -657,6 +735,7 @@ class Animezid : MainAPI() {
                     return try { JSONObject(resp.text) } catch (_: Exception) { null }
                 }
             } catch (_: Exception) {
+                // will retry
             }
             delay(600L * (attempt + 1))
         }
@@ -680,25 +759,32 @@ class Animezid : MainAPI() {
                 )
                 if (resp.code == 200 || resp.code == 201) {
                     val obj = try { JSONObject(resp.text) } catch (_: Exception) { return null }
+                    // The API answers 200 + {"error":"rate_limited"}; keep retrying.
                     if (obj.optString("error") != "rate_limited") return obj
                 } else if (resp.code != 429) {
                     return null
                 }
             } catch (_: Exception) {
+                // transient network error -> retry
             }
             delay(1200L * (attempt + 1))
         }
         return null
     }
 
-    private fun playbackHeaders(csrf: String, referer: String, cookies: Map<String, String>) =
+    private fun playbackHeaders(
+        csrf: String,
+        referer: String,
+        cookies: Map<String, String>,
+        origin: String
+    ) =
         mapOf(
             "User-Agent" to browserUA,
             "Accept" to "*/*",
             "Accept-Language" to "ar,en-US;q=0.9,en;q=0.8",
             "X-Playback-CSRF" to csrf,
             "X-Requested-With" to "XMLHttpRequest",
-            "Origin" to mainUrl,
+            "Origin" to origin,
             "Referer" to referer,
             "Sec-Fetch-Dest" to "empty",
             "Sec-Fetch-Mode" to "cors",
@@ -711,6 +797,20 @@ private fun buildCookieHeader(cookies: Map<String, String>): Map<String, String>
         .joinToString("; ") { "${it.key}=${it.value}" }
     return if (value.isBlank()) emptyMap() else mapOf("Cookie" to value)
 }
+
+    /** The sessions API rejects any Origin that doesn't match its own host (403). */
+    private fun apiOrigin(createUrl: String, fallback: String): String {
+        return try {
+            val u = java.net.URL(createUrl)
+            "${u.protocol}://${u.host}"
+        } catch (_: Exception) {
+            fallback
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Legacy fallback (old button[data-embed] / iframe layout)
+    // -----------------------------------------------------------------
 
     private suspend fun loadViaLegacyEmbeds(
         playDoc: Document,
@@ -739,10 +839,15 @@ private fun buildCookieHeader(cookies: Map<String, String>): Map<String, String>
                     ) { callback(it) }
                 ) found = true
             } catch (_: Exception) {
+                // ignore
             }
         }
         return found
     }
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
 
     private fun isSelfHost(url: String): Boolean {
         val host = try {

@@ -16,5 +16,5 @@ cloudstream {
         "OVA"
     )
 
-    iconUrl = "https://animezid.cam/favicon.ico"
+    iconUrl = "https://animezid.org/templates/egybest-by-mrbrooks/img/favicon.ico"
 }
