@@ -193,12 +193,10 @@ class MoviPlusProvider : MainAPI() {
         }
 
         val headers = mapOf("Referer" to "$mainUrl/")
-        // Expand all renditions from the master playlist (like TukTuk quality expansion)
         try {
             val master = app.get(manifestUrl, headers = headers).text
             val basePath = manifestUrl.substringBeforeLast("/")
             var foundVariant = false
-            // Match EXT-X-STREAM-INF blocks with their URI on next line
             val variantRegex = Regex("""#EXT-X-STREAM-INF:([^\n]+)\n([^\n#][^\n]*)""")
             variantRegex.findAll(master).forEach { match ->
                 val attrs = match.groupValues[1]
@@ -222,7 +220,6 @@ class MoviPlusProvider : MainAPI() {
                 foundVariant = true
             }
             if (foundVariant) {
-                // Also provide master for auto selection
                 callback.invoke(
                     newExtractorLink(source = name, name = "$name - Auto", url = manifestUrl) {
                         this.referer = "$mainUrl/"

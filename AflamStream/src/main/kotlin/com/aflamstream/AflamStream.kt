@@ -94,13 +94,11 @@ class AflamStreamProvider : MainAPI() {
                 if (cards.isNotEmpty()) lists.add(HomePageList(sectionTitle, cards))
             }
             if (lists.isNotEmpty()) return newHomePageResponse(lists)
-            // Fallback
             val fallback = document.select("#recent-content .post, article.post").mapNotNull { postToResult(it) }
             return newHomePageResponse(request.name, fallback)
         }
         val url = if (page <= 1) baseUrl else "${baseUrl.removeSuffix("/")}/page/$page/"
         val document = app.get(url).document
-        // Category pages may use ms-card or classic posts
         val msItems = document.select(".ms-card").mapNotNull { msCardToResult(it) }
         val postItems = document.select("#recent-content .post, article.post").mapNotNull { postToResult(it) }
         val items = (msItems + postItems).distinctBy { it.url }
@@ -206,7 +204,6 @@ class AflamStreamProvider : MainAPI() {
                     val rawUrl = btn.attr("data-url")?.trim() ?: return@async
                     if (rawUrl.isBlank()) return@async
                     val serverLabel = btn.text()?.trim()?.takeIf { it.isNotBlank() } ?: "سيرفر مشاهدة"
-                    // quality hint like "متعدد الجودة" / "عالية" / "متوسطة"
                     val qualityHint = when {
                         serverLabel.contains("عالية") -> 1080
                         serverLabel.contains("متعدد الجودة") -> Qualities.Unknown.value
@@ -240,7 +237,6 @@ class AflamStreamProvider : MainAPI() {
                 }
             }.awaitAll()
         }
-        // Also try default iframe if buttons failed to yield
         if (!iframeSrc.isNullOrBlank()) {
             try {
                 loadExtractor(iframeSrc, data, subtitleCallback) { ext ->

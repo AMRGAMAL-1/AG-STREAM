@@ -71,7 +71,6 @@ class MovizLandProvider : MainAPI() {
             ".grid a[href*=مشاهدة-]"
         )
         val found = linkedMapOf<String, SearchResponse>()
-        // Generic: any link with مشاهدة-فيلم or مشاهدة-مسلسل
         document.select("a[href*=مشاهدة-فيلم], a[href*=مشاهدة-مسلسل]").forEach { a ->
             val href = fixUrl(a.attr("href"))
             if (found.containsKey(href)) return@forEach
@@ -90,7 +89,6 @@ class MovizLandProvider : MainAPI() {
             }
             found[href] = res
         }
-        // Fallback via generic selectors
         if (found.isEmpty()) {
             selectors.forEach { sel ->
                 document.select(sel).forEach { el ->
@@ -174,8 +172,6 @@ class MovizLandProvider : MainAPI() {
             it.contains("HD", true) || it.contains("WEB-DL", true) || it.contains("720p") || it.contains("1080p")
         }
         val year = extractYear(title + " " + document.select(".detail-meta").text())
-
-        // Episodes tab
         val episodeCards = document.select("#episodes a.episode-card[href]")
         if (episodeCards.isNotEmpty()) {
             val seasonFromTitle = extractSeasonNumber(title) ?: 1
@@ -278,7 +274,6 @@ class MovizLandProvider : MainAPI() {
         }
         val serverCards = watchDoc.select("button.server-card[data-src]")
         if (serverCards.isEmpty()) {
-            // Maybe data is already an episode page, try direct iframe
             val iframe = watchDoc.selectFirst("iframe#videoPlayer")?.attr("src")
             if (!iframe.isNullOrBlank()) {
                 loadExtractor(fixUrl(iframe), data, subtitleCallback, callback)
