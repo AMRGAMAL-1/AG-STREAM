@@ -279,13 +279,37 @@ class OstoraVodProvider : MainAPI() {
 
     private fun isDeadMpdBody(body: String): Boolean {
         if (body.isBlank()) return true
+        if (body.contains("denied by region", ignoreCase = true)) return true
         if (body.contains("Access Denied", ignoreCase = true)) return true
         if (body.contains("403 Forbidden", ignoreCase = true)) return true
         val t = body.trimStart()
         if (t.startsWith("<html", ignoreCase = true)) return true
+        if (t.startsWith("<!doctype html", ignoreCase = true)) return true
         if (!body.contains("<MPD", ignoreCase = true)) return true
         return false
     }
+
+    private fun isPermanentDeny(body: String): Boolean {
+        return body.contains("denied by region", ignoreCase = true)
+    }
+
+    private suspend fun probeMpd(url: String, headers: Map<String, String>): String? {
+        repeat(3) { attempt ->
+            try {
+                val body = app.get(url, headers = headers, timeout = 15).text
+                if (!isDeadMpdBody(body)) return body
+                if (isPermanentDeny(body)) return null
+                Log.d(TAG, "mpd probe $url flaky 403 (try ${attempt + 1}/3), retrying")
+            } catch (e: Exception) {
+                val msg = (e.message ?: "").lowercase()
+                if ("region" in msg) return null
+                Log.d(TAG, "mpd probe $url err (try ${attempt + 1}/3): ${e.message}")
+            }
+            if (attempt < 2) kotlinx.coroutines.delay(800)
+        }
+        return null
+    }
+
     private fun capQuality(url: String): String {
         if (!url.contains(".mpd")) return url
         var u = url.replace("video_height:144-1080", "video_height:144-720")
@@ -342,18 +366,9 @@ class OstoraVodProvider : MainAPI() {
                         if (parts.size == 2 && parts[0].length >= 8 && parts[1].length >= 8) {
                             val keyB64 = toB64UrlPadded(parts[0])
                             val kidB64 = toB64UrlPadded(parts[1])
-                            try {
-                                val probe = app.get(cappedUrl, headers = headers, timeout = 15).text
-                                if (isDeadMpdBody(probe)) {
-                                    Log.d(TAG, "dead mpd skipped ($cappedUrl)")
-                                    return false
-                                }
-                            } catch (e: Exception) {
-                                val msg = (e.message ?: "").lowercase()
-                                if ("403" in msg || "404" in msg || "forbidden" in msg || "not found" in msg) {
-                                    Log.d(TAG, "dead mpd skipped ($cappedUrl): ${e.message}")
-                                    return false
-                                }
+                            val probe = probeMpd(cappedUrl, headers)
+                            if (probe == null) {
+                                Log.d(TAG, "drm mpd probe failed but emitting anyway ($cappedUrl)")
                             }
                             callback.invoke(
                                 newDrmExtractorLink(
@@ -377,11 +392,10 @@ class OstoraVodProvider : MainAPI() {
                     var mpd: String? = null
                     var dead = false
                     try {
-                        mpd = app.get(cappedUrl, headers = headers, timeout = 15).text
-                        if (mpd != null && isDeadMpdBody(mpd)) dead = true
-                    } catch (e: Exception) {
-                        val msg = (e.message ?: "").lowercase()
-                        if ("403" in msg || "404" in msg || "forbidden" in msg || "not found" in msg) dead = true
+                        mpd = probeMpd(cappedUrl, headers)
+                        if (mpd == null) dead = true
+                    } catch (_: Exception) {
+                        dead = true
                     }
                     if (dead) {
                         Log.d(TAG, "dead mpd skipped ($cappedUrl)")
