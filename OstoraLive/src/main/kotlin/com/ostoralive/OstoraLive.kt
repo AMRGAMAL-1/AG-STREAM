@@ -32,7 +32,7 @@ class OstoraLiveProvider : MainAPI() {
     private val ivHex = "a9c21f8d7e6b4a9db12e4f9d5c1a7b8e"
     private val defaultUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     private val referer = "https://www.ostora.tv/"
-    private val deadHosts = setOf("random-cdn.link", "x.random-cdn.link", "tv.radarapp.me")
+    private val deadHosts = setOf("random-cdn.link", "x.random-cdn.link", "hex-cdn.link", "tv.radarapp.me")
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class ApiRoot(
@@ -99,17 +99,22 @@ class OstoraLiveProvider : MainAPI() {
     }
 
     private suspend fun api(path: String): String? {
-        return try {
-            val txt = app.get(
-                "$apiHost/api/v6.2/$path",
-                headers = mapOf("User-Agent" to defaultUa),
-                timeout = 20
-            ).text.trim()
-            if (txt.isEmpty()) null else decryptApi(txt)
-        } catch (e: Exception) {
-            Log.d(TAG, "api failed $path: ${e.message}")
-            null
+        var lastErr: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                val txt = app.get(
+                    "$apiHost/api/v6.2/$path",
+                    headers = mapOf("User-Agent" to defaultUa),
+                    timeout = 30
+                ).text.trim()
+                if (txt.isNotEmpty()) return decryptApi(txt)
+            } catch (e: Exception) {
+                lastErr = e
+                Log.d(TAG, "api failed $path (try ${attempt + 1}/3): ${e.message}")
+            }
         }
+        Log.d(TAG, "api giving up $path: ${lastErr?.message}")
+        return null
     }
 
     private suspend fun fetchSections(): List<Section> {
@@ -137,6 +142,11 @@ class OstoraLiveProvider : MainAPI() {
         val m = subsCache
         if (s != null && m != null && now - cacheTime < cacheTtl) return s to m
         val sections = fetchSections().filter { isLiveSection(it) }
+        if (sections.isEmpty()) {
+            Log.d(TAG, "catalog fetch empty, keeping previous cache")
+            if (s != null && m != null) return s to m
+            return emptyList<Section>() to emptyMap<String, List<Item>>()
+        }
         val map = mutableMapOf<String, List<Item>>()
         coroutineScope {
             sections.map { sec ->
@@ -227,7 +237,7 @@ class OstoraLiveProvider : MainAPI() {
     private fun isDeadUrl(url: String): Boolean {
         val host = hostOf(url)
         if (host.isBlank() || host.length > 64) return true
-        if (host in deadHosts) return true
+        if (host in deadHosts || deadHosts.any { h -> host == h || host.endsWith(".$h") }) return true
         return false
     }
 

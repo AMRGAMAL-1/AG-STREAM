@@ -37,7 +37,7 @@ class OstoraVodProvider : MainAPI() {
     private val widevineUuid: UUID = UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed")
     private val clearkeyUuid: UUID = UUID.fromString("e2719d58-a985-b3c9-781a-b030af78d30e")
     private val widevineBrand = "2be49af0-6fbd-4511-8e11-3d6523185bb4"
-    private val deadHosts = setOf("random-cdn.link", "x.random-cdn.link", "tv.radarapp.me")
+    private val deadHosts = setOf("random-cdn.link", "x.random-cdn.link", "hex-cdn.link", "tv.radarapp.me")
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class ApiRoot(
@@ -105,17 +105,22 @@ class OstoraVodProvider : MainAPI() {
     }
 
     private suspend fun api(path: String): String? {
-        return try {
-            val txt = app.get(
-                "$apiHost/api/v6.2/$path",
-                headers = mapOf("User-Agent" to defaultUa),
-                timeout = 20
-            ).text.trim()
-            if (txt.isEmpty()) null else decryptApi(txt)
-        } catch (e: Exception) {
-            Log.d(TAG, "api failed $path: ${e.message}")
-            null
+        var lastErr: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                val txt = app.get(
+                    "$apiHost/api/v6.2/$path",
+                    headers = mapOf("User-Agent" to defaultUa),
+                    timeout = 30
+                ).text.trim()
+                if (txt.isNotEmpty()) return decryptApi(txt)
+            } catch (e: Exception) {
+                lastErr = e
+                Log.d(TAG, "api failed $path (try ${attempt + 1}/3): ${e.message}")
+            }
         }
+        Log.d(TAG, "api giving up $path: ${lastErr?.message}")
+        return null
     }
 
     private suspend fun fetchSections(): List<Section> {
@@ -143,6 +148,11 @@ class OstoraVodProvider : MainAPI() {
         val m = subsCache
         if (s != null && m != null && now - cacheTime < cacheTtl) return s to m
         val sections = fetchSections().filter { !isLiveSection(it) }
+        if (sections.isEmpty()) {
+            Log.d(TAG, "catalog fetch empty, keeping previous cache")
+            if (s != null && m != null) return s to m
+            return emptyList<Section>() to emptyMap<String, List<Item>>()
+        }
         val map = mutableMapOf<String, List<Item>>()
         coroutineScope {
             sections.map { sec ->
@@ -216,7 +226,7 @@ class OstoraVodProvider : MainAPI() {
     private fun isDeadUrl(url: String): Boolean {
         val host = hostOf(url)
         if (host.isBlank() || host.length > 64) return true
-        if (host in deadHosts) return true
+        if (host in deadHosts || deadHosts.any { h -> host == h || host.endsWith(".$h") }) return true
         if (host.endsWith(".shop") && host[0].isDigit() && host.length > 40) return true
         if (url.trimEnd('/') == "https://3arabflix.com" || url.trimEnd('/') == "http://3arabflix.com") return true
         return false
