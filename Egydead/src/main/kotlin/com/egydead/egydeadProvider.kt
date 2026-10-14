@@ -30,6 +30,23 @@ class EgyDead : MainAPI() {
         TvType.TvSeries
     )
 
+    override val mainPage = mainPageOf(
+        "home" to "الرئيسية",
+        "category/english-movies/" to "أفلام أجنبي",
+        "category/%D8%A7%D9%81%D9%84%D8%A7%D9%85-%D8%B9%D8%B1%D8%A8%D9%8A/" to "أفلام عربي",
+        "category/%D8%A7%D9%81%D9%84%D8%A7%D9%85-%D8%AA%D8%B1%D9%83%D9%8A%D8%A9/" to "أفلام تركية",
+        "category/%D8%A7%D9%81%D9%84%D8%A7%D9%85-%D8%A7%D8%B3%D9%8A%D9%88%D9%8A%D8%A9/" to "أفلام آسيوية",
+        "category/hindi-movies/" to "أفلام هندية",
+        "category/%D8%A7%D9%81%D9%84%D8%A7%D9%85-%D9%83%D8%B1%D8%AA%D9%88%D9%86/" to "أفلام كرتون",
+        "category/%D8%A7%D9%81%D9%84%D8%A7%D9%85-%D9%88%D8%AB%D8%A7%D8%A6%D9%82%D9%8A%D8%A9/" to "أفلام وثائقية",
+        "series-category/english-series/" to "مسلسلات أجنبي",
+        "series-category/turkish-series/" to "مسلسلات تركية",
+        "series-category/arabic-series/" to "مسلسلات عربي",
+        "series-category/anime-series/" to "مسلسلات أنمي",
+        "series-category/cartoon-series/" to "مسلسلات كرتون",
+        "series-category/asian-series/" to "مسلسلات آسيوية",
+    )
+
     private val userAgent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
     private var savedCookies: String? = null
     private val cfMutex = Mutex()
@@ -152,6 +169,13 @@ class EgyDead : MainAPI() {
         val logTag = "MAIN-PAGE"
         log(logTag, "Starting getMainPage | Page: $page | Request: ${request.name}")
 
+        if (request.data != "home") {
+            return listingPage(page, request)
+        }
+        if (page > 1) {
+            return newHomePageResponse(request.name, emptyList(), hasNext = false)
+        }
+
         val document = try {
             log(logTag, "Attempting to fetch HTML from: $mainUrl")
             httpGet(mainUrl)
@@ -192,6 +216,28 @@ class EgyDead : MainAPI() {
         }
 
         return newHomePageResponse(homePageList.filter { it.list.isNotEmpty() })
+    }
+
+    /** Paginated category / series-category / tag listing pages (`?page=N/`). */
+    private suspend fun listingPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val base = "${mainUrl.trimEnd('/')}/${request.data.trim('/')}/"
+        val url = if (page <= 1) base else "$base?page=$page/"
+        val document = try {
+            httpGet(url)
+        } catch (e: Exception) {
+            log("MAIN-PAGE", "Listing failed $url -> ${e.message}")
+            return newHomePageResponse(request.name, emptyList(), hasNext = false)
+        }
+        var items = document.select("ul.posts-list li.movieItem").mapNotNull {
+            it.toSearchResponse("LIST")
+        }
+        if (items.isEmpty()) {
+            items = document.select("li.movieItem").mapNotNull {
+                it.toSearchResponse("LIST")
+            }
+        }
+        val hasNext = document.selectFirst("a.next.page-numbers") != null
+        return newHomePageResponse(request.name, items, hasNext)
     }
     private fun Element.toSearchResponse(parentTag: String): SearchResponse? {
         try {
@@ -593,6 +639,11 @@ class EgyDead : MainAPI() {
                 }
             }
 
+            for (el in document.select(".watchAreaMaster .holder iframe[src], iframe.mobIframe[src]")) {
+                val normalized = normalizeCandidate(el.attr("src"))
+                if (normalized != null) candidates += Pair(normalized, null)
+            }
+
             for (el in document.select("[data-link]")) {
                 val serverName = el.attr("data-name").takeIf { it.isNotBlank() } ?: el.attr("data-provider")
                 val dl = el.attr("data-link")
@@ -602,6 +653,7 @@ class EgyDead : MainAPI() {
 
             for (a in document.select("a")) {
                 val href = a.attr("href")
+                if (href.contains("youtube.com") || href.contains("youtu.be")) continue
                 if (href.contains("player") || href.contains("embed") || href.contains("download") || href.contains("drive") || href.contains("mp4")) {
                     val serverName = a.attr("title").takeIf { it.isNotBlank() } ?: a.text().takeIf { it.isNotBlank() }
                     val normalized = normalizeCandidate(href)
@@ -618,9 +670,22 @@ class EgyDead : MainAPI() {
 
                 if (!allSeenLinks.add(normalized)) return false
 
+                var emitted = false
                 try {
-                    loadExtractor(normalized, data, subtitleCallback, callback)
+                    loadExtractor(normalized, data, subtitleCallback) {
+                        emitted = true
+                        callback(it)
+                    }
                 } catch (ex: Exception) {}
+
+                // Rotating MegaMax mirror hosts need the Inertia mirrors flow.
+                if (!emitted && MegaMaxMirror.looksLikeMirror(normalized)) {
+                    try {
+                        if (MegaMaxMirror.resolve(normalized, serverName, data, subtitleCallback, callback)) {
+                            emitted = true
+                        }
+                    } catch (_: Exception) { }
+                }
 
                 try {
                     if (serverName != null && (serverName.equals("EarnVids", true) || serverName.equals("StreamHG", true))) {
@@ -664,7 +729,7 @@ class EgyDead : MainAPI() {
                 }.awaitAll()
             }
 
-            return true
+            return candidates.isNotEmpty()
         } catch (e: Exception) {
             e.printStackTrace()
             return false
