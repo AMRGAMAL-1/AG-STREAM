@@ -606,11 +606,6 @@ class ShahidLiveProvider : MainAPI() {
         val type = parsed.first
         val id = parsed.second
         val rest = parsed.third
-        // Working lineup: VidSrcBuzz + VidEm (play-mint API, TMDB ids) +
-        // VidSrc TO (vsembed chain) + 2Embed (inner embeds resolved manually).
-        // Dropped: vaplayer (JS anti-bot, zero links server-side),
-        // vidsrc.me / multiembed / autoembed (time out on all networks),
-        // core 2Embed extractor (fabricates dead streamcash.to URL -> filtered).
         val tasks = mutableListOf<suspend () -> Unit>()
         if (type == "movie") {
             val imdb = imdbId(id)
