@@ -68,60 +68,70 @@ class tunProvider : MainAPI() {
         return ""
     }
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        val url = "$mainUrl/feeds/posts/default?alt=json&max-results=30"
-        val response = app.get(url).parsed<BloggerFeed>()
-        val entries = response.feed?.entry ?: return null
+    override val mainPage = mainPageOf(
+        "latest" to "آخر الإضافات",
+        "label:تونسي" to "تونسي",
+        "label:مصري" to "مصري",
+        "label:أكشن" to "أكشن",
+        "label:رعب" to "رعب",
+        "label:كوميديا" to "كوميديا",
+        "label:دراما" to "دراما",
+        "label:رومانسي" to "رومانسي",
+        "label:مغامرة" to "مغامرة",
+        "label:رمضان 2026" to "رمضان 2026",
+        "label:Anime" to "أنمي",
+        "label:Turki" to "تركي",
+    )
 
-        val homeItems = entries.mapNotNull { entry ->
-            val title = entry.title?.text ?: return@mapNotNull null
-            val postUrl = entry.link?.find { it.rel == "alternate" }?.href ?: return@mapNotNull null
-            val posterUrl = getPosterFromEntry(entry)
+    private fun entryToResponse(entry: Entry): SearchResponse? {
+        val title = entry.title?.text ?: return null
+        val postUrl = entry.link?.find { it.rel == "alternate" }?.href ?: return null
+        val posterUrl = getPosterFromEntry(entry)
 
-            val isSeries = title.contains("مسلسل", ignoreCase = true) ||
-                    title.contains("Season", ignoreCase = true) ||
-                    title.contains("Saison", ignoreCase = true)
-            val type = if (isSeries) TvType.TvSeries else TvType.Movie
+        val isSeries = title.contains("مسلسل", ignoreCase = true) ||
+                title.contains("Season", ignoreCase = true) ||
+                title.contains("Saison", ignoreCase = true)
+        val type = if (isSeries) TvType.TvSeries else TvType.Movie
 
-            if (isSeries) {
-                newTvSeriesSearchResponse(title, postUrl, type) {
-                    this.posterUrl = posterUrl
-                }
-            } else {
-                newMovieSearchResponse(title, postUrl, type) {
-                    this.posterUrl = posterUrl
-                }
+        return if (isSeries) {
+            newTvSeriesSearchResponse(title, postUrl, type) {
+                this.posterUrl = posterUrl
+            }
+        } else {
+            newMovieSearchResponse(title, postUrl, type) {
+                this.posterUrl = posterUrl
             }
         }
+    }
 
-        return newHomePageResponse("آخر الإضافات", homeItems)
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
+        val startIndex = (page - 1) * 30 + 1
+        val url = if (request.data.startsWith("label:")) {
+            val label = request.data.removePrefix("label:")
+            "$mainUrl/feeds/posts/default/-/${encodeUrl(label)}?alt=json&max-results=30&start-index=$startIndex"
+        } else {
+            "$mainUrl/feeds/posts/default?alt=json&max-results=30&start-index=$startIndex"
+        }
+        val response = try {
+            app.get(url).parsed<BloggerFeed>()
+        } catch (_: Exception) {
+            return null
+        }
+        val entries = response.feed?.entry ?: emptyList()
+        val homeItems = entries.mapNotNull { entryToResponse(it) }
+        return newHomePageResponse(request.name, homeItems, hasNext = entries.size >= 30)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/feeds/posts/default?alt=json&q=${encodeUrl(query)}&max-results=20"
-        val response = app.get(searchUrl).parsed<BloggerFeed>()
+        val response = try {
+            app.get(searchUrl).parsed<BloggerFeed>()
+        } catch (_: Exception) {
+            return emptyList()
+        }
         val entries = response.feed?.entry ?: return emptyList()
 
-        return entries.mapNotNull { entry ->
-            val title = entry.title?.text ?: return@mapNotNull null
-            val postUrl = entry.link?.find { it.rel == "alternate" }?.href ?: return@mapNotNull null
-            val posterUrl = getPosterFromEntry(entry)
-
-            val isSeries = title.contains("مسلسل", ignoreCase = true) ||
-                    title.contains("Season", ignoreCase = true) ||
-                    title.contains("Saison", ignoreCase = true)
-            val type = if (isSeries) TvType.TvSeries else TvType.Movie
-
-            if (isSeries) {
-                newTvSeriesSearchResponse(title, postUrl, type) {
-                    this.posterUrl = posterUrl
-                }
-            } else {
-                newMovieSearchResponse(title, postUrl, type) {
-                    this.posterUrl = posterUrl
-                }
-            }
-        }
+        return entries.mapNotNull { entryToResponse(it) }
     }
 
     override suspend fun load(url: String): LoadResponse? {
@@ -140,6 +150,14 @@ class tunProvider : MainAPI() {
         }
 
         if (targetPlayerUrl.isEmpty()) {
+            // No dedicated player page: fall back to videos embedded directly in the post.
+            val direct = directVideosFromPost(doc)
+            if (direct.isNotEmpty()) {
+                val first = direct.first()
+                return newMovieLoadResponse(title, url, TvType.Movie, first) {
+                    this.posterUrl = poster
+                }
+            }
             return null
         }
 
@@ -147,6 +165,17 @@ class tunProvider : MainAPI() {
         val htmlContent = playerDoc.html()
 
         val poster = doc.selectFirst("meta[property=\"og:image\"]")?.attr("content")
+
+        // New worker-based player (single movie, no episode list in markup):
+        // page defines const WORKER = 'https://<movie>.workers.dev' and mints
+        // a token via GET <WORKER>/token -> {token, ts}, played as <WORKER>/play?t=&ts=.
+        val workerBase = Regex("""(?:const|let|var)\s+WORKER\s*=\s*['"]([^'"]+)['"]""")
+            .find(htmlContent)?.groupValues?.get(1)?.trim()?.trimEnd('/')
+        if (workerBase?.startsWith("http") == true) {
+            return newMovieLoadResponse(title, url, TvType.Movie, "worker|$workerBase|$targetPlayerUrl") {
+                this.posterUrl = poster
+            }
+        }
 
         val episodesList = parseEpisodesFlexible(htmlContent)
         val isSeries = title.contains("مسلسل", ignoreCase = true) ||
@@ -180,13 +209,61 @@ class tunProvider : MainAPI() {
                 }
             }
         }
+        // Last resort: direct video embeds inside the player page itself.
+        val playerDirect = directVideosFromPost(playerDoc)
+        if (playerDirect.isNotEmpty()) {
+            return newMovieLoadResponse(title, url, TvType.Movie, playerDirect.first()) {
+                this.posterUrl = poster
+            }
+        }
         return newMovieLoadResponse(title, url, TvType.Movie, targetPlayerUrl) {
             this.posterUrl = poster
         }
     }
 
+    /** Direct video URLs embedded in a post/player page (wixstatic iframes, video tags). */
+    private fun directVideosFromPost(doc: org.jsoup.nodes.Document): List<String> {
+        val out = linkedSetOf<String>()
+        doc.select("iframe[src]").forEach { iframe ->
+            val src = iframe.attr("src").trim()
+            if (src.contains("wixstatic.com/video/") || src.contains(".mp4") || src.contains(".m3u8")) {
+                out.add(src)
+            }
+        }
+        doc.select("video[src]").forEach { v ->
+            val src = v.attr("src").trim()
+            if (src.isNotBlank()) out.add(src)
+        }
+        doc.select("video source[src]").forEach { s ->
+            val src = s.attr("src").trim()
+            if (src.isNotBlank()) out.add(src)
+        }
+        return out.toList()
+    }
+
     private fun parseEpisodesFlexible(htmlContent: String): List<ParsedEpisode> {
         val list = mutableListOf<ParsedEpisode>()
+
+        // Series layout: episodesData_dirty = [{ id: 1, title: "...", baseURL: "..." }, ...]
+        val dirtyMatcher = Pattern.compile(
+            """episodesData_dirty\s*=\s*\[(.*?)\];""",
+            Pattern.DOTALL
+        ).matcher(htmlContent)
+        if (dirtyMatcher.find()) {
+            val arrayBody = dirtyMatcher.group(1) ?: ""
+            val itemMatcher = Pattern.compile(
+                """\{\s*id\s*:\s*(\d+)\s*,\s*title\s*:\s*["']([^"']+)["']\s*,\s*baseURL\s*:\s*["']([^"']+)["']\s*\}"""
+            ).matcher(arrayBody)
+            while (itemMatcher.find()) {
+                val id = itemMatcher.group(1)?.toIntOrNull() ?: continue
+                val title = itemMatcher.group(2) ?: "الحلقة $id"
+                val baseURL = itemMatcher.group(3) ?: continue
+                if (baseURL.isNotBlank() && baseURL != "LLLLLLL") {
+                    list.add(ParsedEpisode(id, title, baseURL))
+                }
+            }
+            if (list.isNotEmpty()) return list.sortedBy { it.id }
+        }
 
         val blockPattern = Pattern.compile("""\{[^{}]*?(?:"baseURL"|'baseURL'|baseURL)\s*:[^{}]*?\}""", Pattern.DOTALL)
         val blockMatcher = blockPattern.matcher(htmlContent)
@@ -252,6 +329,38 @@ class tunProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // Worker-based player: data = "worker|<workerBase>|<playerPageUrl>"
+        if (data.startsWith("worker|")) {
+            val parts = data.split("|")
+            val workerBase = parts.getOrNull(1)?.trim()?.trimEnd('/') ?: return false
+            val playerPage = parts.getOrNull(2)?.takeIf { it.startsWith("http") } ?: mainUrl
+            if (!workerBase.startsWith("http")) return false
+            return try {
+                val tokenText = app.get(
+                    "$workerBase/token",
+                    headers = mapOf("Accept" to "application/json"),
+                    referer = playerPage,
+                    timeout = 15
+                ).text
+                val token = Regex(""""token"\s*:\s*"([^"]+)"""").find(tokenText)?.groupValues?.get(1)
+                val ts = Regex(""""ts"\s*:\s*"?([^",}\s]+)"?""").find(tokenText)?.groupValues?.get(1)
+                if (token.isNullOrBlank() || ts.isNullOrBlank()) return false
+                val playUrl = "$workerBase/play?t=${java.net.URLEncoder.encode(token, "UTF-8")}&ts=${java.net.URLEncoder.encode(ts, "UTF-8")}"
+                callback.invoke(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${this.name} - مشغل",
+                        url = playUrl,
+                    ) {
+                        referer = playerPage
+                        quality = getQualityFromName("720p")
+                    }
+                )
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
         var mediaUrl: String? = null
         val pageUrl = data.substringBefore("#")
         val epId = data.substringAfter("#ep=", "").toIntOrNull()
