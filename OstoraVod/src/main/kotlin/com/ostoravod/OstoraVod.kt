@@ -286,10 +286,6 @@ class OstoraVodProvider : MainAPI() {
         if (!body.contains("<MPD", ignoreCase = true)) return true
         return false
     }
-
-    // Cap adaptive DASH to 720p: the 1080p reps (rep 10.x) are the ones that
-    // most often 403 on edgenextcdn, and requesting them is what stalls
-    // seek/quality-switch. 720p segments are far more stable.
     private fun capQuality(url: String): String {
         if (!url.contains(".mpd")) return url
         var u = url.replace("video_height:144-1080", "video_height:144-720")
