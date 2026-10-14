@@ -150,7 +150,6 @@ class tunProvider : MainAPI() {
         }
 
         if (targetPlayerUrl.isEmpty()) {
-            // No dedicated player page: fall back to videos embedded directly in the post.
             val direct = directVideosFromPost(doc)
             if (direct.isNotEmpty()) {
                 val first = direct.first()
@@ -165,10 +164,6 @@ class tunProvider : MainAPI() {
         val htmlContent = playerDoc.html()
 
         val poster = doc.selectFirst("meta[property=\"og:image\"]")?.attr("content")
-
-        // New worker-based player (single movie, no episode list in markup):
-        // page defines const WORKER = 'https://<movie>.workers.dev' and mints
-        // a token via GET <WORKER>/token -> {token, ts}, played as <WORKER>/play?t=&ts=.
         val workerBase = Regex("""(?:const|let|var)\s+WORKER\s*=\s*['"]([^'"]+)['"]""")
             .find(htmlContent)?.groupValues?.get(1)?.trim()?.trimEnd('/')
         if (workerBase?.startsWith("http") == true) {
@@ -209,7 +204,6 @@ class tunProvider : MainAPI() {
                 }
             }
         }
-        // Last resort: direct video embeds inside the player page itself.
         val playerDirect = directVideosFromPost(playerDoc)
         if (playerDirect.isNotEmpty()) {
             return newMovieLoadResponse(title, url, TvType.Movie, playerDirect.first()) {
@@ -243,8 +237,6 @@ class tunProvider : MainAPI() {
 
     private fun parseEpisodesFlexible(htmlContent: String): List<ParsedEpisode> {
         val list = mutableListOf<ParsedEpisode>()
-
-        // Series layout: episodesData_dirty = [{ id: 1, title: "...", baseURL: "..." }, ...]
         val dirtyMatcher = Pattern.compile(
             """episodesData_dirty\s*=\s*\[(.*?)\];""",
             Pattern.DOTALL
@@ -329,7 +321,6 @@ class tunProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Worker-based player: data = "worker|<workerBase>|<playerPageUrl>"
         if (data.startsWith("worker|")) {
             val parts = data.split("|")
             val workerBase = parts.getOrNull(1)?.trim()?.trimEnd('/') ?: return false
