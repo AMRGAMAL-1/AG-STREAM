@@ -126,8 +126,6 @@ object CimaCloudExtractors {
                 link.contains("googleusercontent.com") || link.contains("googlefinal") ||
                 link.contains("hrrejhp")
 
-    // ------------------------------------------------- P.A.C.K.E.R. embeds (vidspeed / uqload)
-
     private val PACKER_EVAL_RE = Regex(
         """(?s)\}\s*\('(.*)',\s*(.*?),\s*(\d+),\s*'(.*?)'\.split\('\|'\)"""
     )
@@ -203,8 +201,6 @@ object CimaCloudExtractors {
         }
         return found
     }
-
-    // ------------------------------------------------------------------ FaselHD watch pages
 
     /** True for any FaselHD watch page handled by [emit]. */
     fun isFaselHDLink(link: String): Boolean = hostContains(link, "fasel-hd")
@@ -311,8 +307,6 @@ object CimaCloudExtractors {
         return found
     }
 
-    // ------------------------------------------------------------------ entry point
-
     /**
      * Single entry point: classify [link] and emit every playable stream it yields.
      *
@@ -357,8 +351,6 @@ object CimaCloudExtractors {
         }
     }
 
-    // ------------------------------------------------------------------ direct
-
     private suspend fun emitDirect(
         link: String,
         referer: String,
@@ -380,8 +372,6 @@ object CimaCloudExtractors {
         return true
     }
 
-    // ------------------------------------------------------------------ generic fallback
-
     private suspend fun emitUnknown(
         link: String,
         referer: String,
@@ -402,8 +392,6 @@ object CimaCloudExtractors {
         }
         return found
     }
-
-    // ------------------------------------------------------------------ Google Photos
 
     private suspend fun emitGooglePhotosLink(
         link: String,
@@ -487,9 +475,6 @@ object CimaCloudExtractors {
         var found = false
 
         val dashUrl = base + DASH_OPTION
-
-        // One independent DASH source per video rendition, served as a tiny
-        // single-rendition manifest so each quality is its own stable link.
         val manifest = manifestFor(dashUrl)
         val byHeight = LinkedHashMap<Int, VideoRep>()
         if (!manifest.isNullOrBlank()) {
@@ -513,9 +498,6 @@ object CimaCloudExtractors {
                 )
             }
         }
-
-        // Direct adaptive DASH manifest — a fresh URL every session so the
-        // player's cache never replays a manifest with already-expired segments.
         val adaptiveUrl = freshDash(dashUrl)
         if (done.add("ga:$adaptiveUrl")) {
             found = true
@@ -526,8 +508,6 @@ object CimaCloudExtractors {
                 }
             )
         }
-
-        // Direct progressive MP4 qualities (muxed video+audio).
         for (suffix in SEEKABLE) {
             val url = base + suffix
             if (!done.add(url)) continue
@@ -667,8 +647,6 @@ object CimaCloudExtractors {
         }
         return -1
     }
-
-    // ------------------------------------------------------------------ PHP extractor chain
 
     /** Mirror the app's extractor chain for ANY source page; all three endpoints run and merge, deduped by URL. */
     private suspend fun emitPhpChain(

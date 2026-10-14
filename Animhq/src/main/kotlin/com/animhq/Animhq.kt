@@ -52,10 +52,6 @@ class Animhq : MainAPI() {
         "Upgrade-Insecure-Requests" to "1"
     )
 
-    // ---------------------------------------------------------------
-    // Network helpers
-    // ---------------------------------------------------------------
-
     private suspend fun getPage(url: String, referer: String = "$mainUrl/"): Document {
         return try {
             app.get(url, headers = baseHeaders, referer = referer, timeout = 45).document
@@ -93,10 +89,6 @@ class Animhq : MainAPI() {
 
     private fun String.adjustEntities(): String =
         Parser.unescapeEntities(this, false)
-
-    // ---------------------------------------------------------------
-    // Item parsing (cards in lists)
-    // ---------------------------------------------------------------
 
 /**
      * يحوّل عنصر قائمة إلى SearchResponse. يدعم النموذجين:
@@ -170,18 +162,11 @@ class Animhq : MainAPI() {
     }
 
     private fun Document.extractPosterCards(): List<SearchResponse> {
-        // النموذج الأساسي (التصنيفات والبحث)
         val main = select(".poster-img-container, .swiper-slide.flex-item")
             .mapNotNull { it.toSearchResponse() }
         if (main.isNotEmpty()) return main.distinctBy { it.url }
-
-        // نموذج AJAX الرئيسية: li.singleBB
         return select("li.singleBB").mapNotNull { it.toSearchResponse() }
     }
-
-    // ---------------------------------------------------------------
-    // Main page
-    // ---------------------------------------------------------------
 
     private val apiUrl = "$mainUrl/wp-content/themes/animhq/api.php"
 
@@ -242,20 +227,12 @@ class Animhq : MainAPI() {
         return newHomePageResponse(request.name, doc.extractPosterCards())
     }
 
-    // ---------------------------------------------------------------
-    // Search
-    // ---------------------------------------------------------------
-
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
         val encoded = URLEncoder.encode(query, "UTF-8")
         return getPage("$mainUrl/?s=$encoded").extractPosterCards()
     }
-
-    // ---------------------------------------------------------------
-    // Load (details + seasons + episodes)
-    // ---------------------------------------------------------------
 
     private fun Document.extractSerieInfo(label: String): String? {
         val item = select(".serie-data-grid-item").firstOrNull { el ->
@@ -321,13 +298,10 @@ class Animhq : MainAPI() {
                 this.tags = genres
             }
         }
-
-        // ---- مسلسل: مواسم + حلقات ----
         val episodes = arrayListOf<Episode>()
 
         val seasonMenu = doc.select(".season-dropdown-menu a.season-dropdown-item")
         if (seasonMenu.isEmpty()) {
-            // موسم واحد معروض في الصفحة
             val seasonNum = doc.select(".season-dropdown-toggle span, .season-dropdown-toggle-disabled span")
                 .firstOrNull()?.text()?.getIntFromText() ?: 1
             episodes.addAll(doc.extractEpisodes(seasonNum))
@@ -364,10 +338,6 @@ class Animhq : MainAPI() {
         }
     }
 
-    // ---------------------------------------------------------------
-    // loadLinks (المشغّل)
-    // ---------------------------------------------------------------
-
     /**
      * data قد يكون:
      *  1) صفحة embed: https://animhq.com/?embed={id}&ep={n}  (حلقة مسلسل)
@@ -387,8 +357,6 @@ class Animhq : MainAPI() {
             val page = getPage(embedPageUrl, referer = referer)
             val clean = page.html().adjustEntities()
             var emitted = false
-
-            // مسارات مباشرة: /stream/ (تشغيل) و /download/ (نسخة التحميل)
             val candidates = mutableListOf<String>()
             page.select("span[dld], input[dld], span[data-src], input[data-src]")
                 .forEach { el ->
@@ -421,8 +389,6 @@ class Animhq : MainAPI() {
                 }
             }
             if (emitted) return true
-
-            // فحص شامل للنص (بعض الصفحات قد تضع الرابط مباشرة)
             Regex("""https?://[^"'\s<>]+""").findAll(clean).forEach { match ->
                 val link = match.value
                 if (!link.contains("/stream/")) return@forEach
@@ -449,11 +415,7 @@ class Animhq : MainAPI() {
             }
             return emitted
         }
-
-        // 1) إن كان data صفحة embed مباشرة (حالة حلقات المسلسل) فاستخرج
         if (extractFromEmbed(data, "$mainUrl/")) return true
-
-        // 2) صفحة مسلسل/فيلم: اتبع data-watch / iframes نحو صفحة embed
         val pageDoc = getPage(data)
         val watchUrls = linkedSetOf<String>()
         pageDoc.select("li[data-watch], a[data-watch], iframe[src*=embed], a[href*=embed=]")

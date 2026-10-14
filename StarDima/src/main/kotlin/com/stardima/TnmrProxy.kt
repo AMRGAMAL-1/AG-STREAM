@@ -116,10 +116,6 @@ object TnmrProxy {
             if (!embed.isNullOrBlank()) add(embed)
         }.distinct()
 
-    // ------------------------------------------------------------------
-    // Server
-    // ------------------------------------------------------------------
-
     private fun ensureServer(): Boolean {
         if (serverUp && port > 0) return true
         return synchronized(this) {
@@ -152,7 +148,6 @@ object TnmrProxy {
                 scope.launch { handleSocket(sock) }
             }
         } catch (_: Throwable) {
-            // server closed
         }
     }
 
@@ -250,10 +245,6 @@ object TnmrProxy {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Upstream fetch through native browser-TLS client
-    // ------------------------------------------------------------------
-
     /**
      * Try each candidate Referer in order and return the first upstream byte
      * array that answers 200 together with the Referer that won (kept per
@@ -264,9 +255,6 @@ object TnmrProxy {
         synchronized(ALL) {
             for (ref in referers) {
                 val bytes = try {
-                    // ua="" keeps curl-impersonate's own self-consistent header
-                    // set (User-Agent + sec-ch-ua + sec-fetch-*); overriding only
-                    // the UA breaks the chrome version consistency and gets 403.
                     BrowserFetch.fetch(url, ref, "", 20, emptyArray())
                 } catch (e: Throwable) {
                     Log.i(TAG, "fetch error for ${url.take(120)}: $e")
@@ -291,10 +279,6 @@ object TnmrProxy {
         }
 
     private val ALL = Any()
-
-    // ------------------------------------------------------------------
-    // HLS playlist rewriting
-    // ------------------------------------------------------------------
 
     private fun isPlaylist(body: ByteArray): Boolean {
         val head = String(body, 0, minOf(body.size, 16), StandardCharsets.UTF_8)
@@ -355,10 +339,6 @@ object TnmrProxy {
 
     private fun enc(value: String): String =
         URLEncoder.encode(value, "UTF-8")
-
-    // ------------------------------------------------------------------
-    // Native library loading
-    // ------------------------------------------------------------------
 
     private fun ensureNative(context: Context): Boolean {
         if (nativeLoaded.get()) return true

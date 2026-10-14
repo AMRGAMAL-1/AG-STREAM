@@ -252,7 +252,6 @@ class CimaCloud : MainAPI() {
     private suspend fun loadSeries(url: String, id: String): LoadResponse {
         var showId = id
         if (url.contains("/episode/")) {
-            // legacy episode detail URL: resolve its series id when possible
             val ep = fetchJson("${resolveApi()}/episode/$id", withToken = true)
             showId = ep?.optJSONObject("episode")?.optJSONObject("series")?.optString("id").orEmpty().ifEmpty { id }
         }

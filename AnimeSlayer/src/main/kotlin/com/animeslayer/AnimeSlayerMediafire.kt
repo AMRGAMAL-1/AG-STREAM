@@ -42,19 +42,14 @@ class AnimeSlayerMediafire : ExtractorApi() {
     }
 
     private fun extractDirect(page: String): String? {
-        // 1) base64 "data-scrambled-url" (some premium pages)
         Regex("""data-scrambled-url="([^"]+)"""").find(page)?.groupValues?.get(1)
             ?.let { runCatching { String(Base64.decode(it, Base64.DEFAULT)) }.getOrNull() }
             ?.takeIf { it.startsWith("http") }
             ?.let { return it }
-
-        // 2) the download button / "input popsok" anchor href
         Regex("""href="(https?://download\d+\.mediafire\.com/[^"]+)"""")
             .find(page)?.groupValues?.get(1)
             ?.replace("&amp;", "&")
             ?.let { return it }
-
-        // 3) any bare direct-link occurrence
         return Regex("""https?://download\d+\.mediafire\.com/[^"'\s<>\\]+""")
             .find(page)?.value
     }

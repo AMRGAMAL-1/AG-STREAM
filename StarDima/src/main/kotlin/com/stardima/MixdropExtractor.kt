@@ -56,10 +56,6 @@ class MixdropExtractor : ExtractorApi() {
         }
 
         val type = if (streamUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-        // Use the real video height as the quality so CloudStream shows e.g.
-        // "Mixdrop 720p". When it cannot be read, fall back to the "unknown"
-        // sentinel (whose label is empty) so it shows just "Mixdrop", not
-        // "Mixdrop -1p".
         val quality = if (type == ExtractorLinkType.VIDEO) {
             resolveVideoHeight(streamUrl, pageReferer) ?: Qualities.Unknown.value
         } else {
@@ -79,17 +75,12 @@ class MixdropExtractor : ExtractorApi() {
         )
     }
 
-    // ------------------------------------------------------------ MP4 probing
-
     /** Fetch just enough of the MP4 to read the video track height, or null. */
     private suspend fun resolveVideoHeight(mp4Url: String, referer: String): Int? {
         val head = safeGet(mp4Url, referer, "bytes=0-${HEAD_BYTES - 1}") ?: return null
         if (!rangeOk(head)) return null
         val headBytes = bodyBytes(head) ?: return null
         parseHeightFromTop(headBytes)?.let { return it }
-
-        // moov is at the end (non-faststart): jump to where it should start and
-        // read its first chunk, then fall back to scanning the file tail.
         val total = head.headers["Content-Range"]?.substringAfterLast('/')?.trim()?.toLongOrNull()
         if (total != null && total > HEAD_BYTES) {
             val moovStart = moovOffsetFromTop(headBytes, total)

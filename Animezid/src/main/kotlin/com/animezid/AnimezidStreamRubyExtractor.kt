@@ -31,8 +31,6 @@ open class AnimezidStreamRubyExtractor : ExtractorApi() {
         val embedUrl = url.trim().trimEnd('/')
         val fileCode = embedUrl.substringAfterLast("/")
         if (fileCode.isBlank()) return
-
-        // Seed the session cookie used by the /dl endpoint.
         try {
             app.get(embedUrl, referer = referer ?: mainUrl)
         } catch (_: Exception) {

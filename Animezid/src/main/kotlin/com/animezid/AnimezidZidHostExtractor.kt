@@ -105,8 +105,6 @@ open class AnimezidZidHostExtractor : ExtractorApi() {
                 val decrypted = String(cipher.doFinal(encrypted), Charsets.UTF_8)
 
                 if (!decrypted.contains("m3u8")) continue
-
-                // Strip PKCS5 padding + any surrounding garbage: keep "{...}" JSON body.
                 val start = decrypted.indexOf('{')
                 val end = decrypted.lastIndexOf('}')
                 if (start < 0 || end <= start) continue
@@ -120,7 +118,6 @@ open class AnimezidZidHostExtractor : ExtractorApi() {
                     .firstOrNull { it.contains(".m3u8") || it.contains(".txt") }
                 if (m3u8 != null) return m3u8
             } catch (_: Exception) {
-                // wrong IV candidate, keep trying
             }
         }
         return null
@@ -133,9 +130,6 @@ open class AnimezidZidHostExtractor : ExtractorApi() {
     }
 
     private fun sanitizeUrl(raw: String): String {
-        // The "source" field sometimes carries a magic byte prefix before the URL
-        // (e.g. "\u0001\u00c3\u008d..." + "://94.131.x.x/..."); strip anything
-        // that is not part of the URL itself.
         val cleaned = raw.replace("\\/", "/")
             .trimStart { !it.isLetterOrDigit() }
             .trimStart('/')

@@ -92,8 +92,6 @@ class Egywatch : MainAPI() {
         "categories/streaming/show/streaming" to "بث مباشر"
     )
 
-    // ------------------------------------------------------------------ HTTP
-
     private val probeClient by lazy {
         app.baseClient.newBuilder()
             .connectTimeout(8, TimeUnit.SECONDS)
@@ -146,8 +144,6 @@ class Egywatch : MainAPI() {
         }
     }
 
-    // ------------------------------------------------------------------ main
-
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val json = getJson("${request.data}/$CODE?page=$page")
             ?: return newHomePageResponse(request.name, emptyList())
@@ -191,8 +187,6 @@ class Egywatch : MainAPI() {
         }
         return "$mainUrl/detail/$key/$id"
     }
-
-    // ------------------------------------------------------------------ load
 
     override suspend fun load(url: String): LoadResponse {
         val parts = url.substringAfter("/detail/", url).split("/")
@@ -295,8 +289,6 @@ class Egywatch : MainAPI() {
         return result
     }
 
-    // ----------------------------------------------------------------- links
-
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -308,8 +300,6 @@ class Egywatch : MainAPI() {
             Log.i(TAG, "no videos for $data")
             return false
         }
-        // The API frequently lists the same file several times (different "quality" labels
-        // pointing at one master playlist). Collapse those into a single source.
         val emitted = HashSet<String>()
         val guarded: (ExtractorLink) -> Unit = { link ->
             val key = if (link.url.contains(".m3u8")) link.url.substringBefore('?') else link.url
@@ -370,8 +360,6 @@ class Egywatch : MainAPI() {
         val userAgent = video.optString("useragent").ifBlank { null }
         val headerRaw = video.optString("header")
         val referer = if (headerRaw.startsWith("http")) headerRaw else null
-
-        // Direct media file — no extraction needed, but skip empty placeholders.
         if (DIRECT_FILE.containsMatchIn(link)) {
             if (isDeadDirect(link, userAgent)) {
                 Log.i(TAG, "dead direct link, skipped: $link")
@@ -383,11 +371,7 @@ class Egywatch : MainAPI() {
             })
             return true
         }
-
-        // The app resolves embeds through its own server-side scraper first.
         if (EgywatchHostExtractor.extract(link, server, referer, userAgent, callback)) return true
-
-        // CloudStream built-in extractors as a fallback (streamwish, uqload, streamruby ...).
         return runCatching {
             loadExtractor(link, referer, subtitleCallback, callback)
         }.getOrElse {

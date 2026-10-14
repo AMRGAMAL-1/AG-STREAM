@@ -49,10 +49,6 @@ class DramaWorld : MainAPI() {
         private const val KEY = "4F5A9C3D9A86FA54EACEDDD635185"
         private const val UUID = "d506abfd-9fe2-4b71-b979-feff21bcad13"
         private const val UA = "okhttp/4.12.0"
-
-        // The capture's HTTP/2 `:authority` was `dwapp.arabypros.com` (the `url`
-        // field was a placeholder). Both are the same Cloudflare zone; we probe
-        // candidates and stick with the first that returns JSON.
         private val BASE_CANDIDATES = listOf(
             "https://dwapp.arabypros.com/api",
             "https://test.arabypros.com/api"
@@ -80,8 +76,6 @@ class DramaWorld : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Live)
 
     private val headers = mapOf("User-Agent" to UA)
-
-    // ---------------------------------------------------------------- helpers
 
     /** Resolves the live API host by probing the candidates once. */
     private suspend fun base(): String {
@@ -239,8 +233,6 @@ class DramaWorld : MainAPI() {
         return out
     }
 
-    // ---------------------------------------------------------------- home
-
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val root = getJson(api("first")) ?: return newHomePageResponse(emptyList())
         val lists = mutableListOf<HomePageList>()
@@ -288,8 +280,6 @@ class DramaWorld : MainAPI() {
         return newHomePageResponse(lists)
     }
 
-    // ---------------------------------------------------------------- search
-
     override suspend fun search(query: String): List<SearchResponse> {
         val out = mutableListOf<SearchResponse>()
         try {
@@ -311,8 +301,6 @@ class DramaWorld : MainAPI() {
         }
         return out
     }
-
-    // ---------------------------------------------------------------- load
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.trimEnd('/').substringAfterLast('/').takeWhile { it.isDigit() }
@@ -356,8 +344,6 @@ class DramaWorld : MainAPI() {
         val seasons = getArray(api("season/by/serie/$id")) ?: JSONArray()
         for (s in 0 until seasons.length()) {
             val season = seasons.optJSONObject(s) ?: continue
-            // API array order can differ from the real season number, so trust the
-            // season's own title; fall back to counting down from the newest.
             val seasonNumber = parseSeasonNumber(season.optString("title"))
                 ?: (seasons.length() - s)
             val eps = season.optJSONArray("episodes") ?: continue
@@ -388,8 +374,6 @@ class DramaWorld : MainAPI() {
 
     private suspend fun errorResponse(message: String): LoadResponse =
         newMovieLoadResponse(message, mainUrl, TvType.Movie, "") { this.plot = message }
-
-    // ---------------------------------------------------------------- links
 
     override suspend fun loadLinks(
         data: String,

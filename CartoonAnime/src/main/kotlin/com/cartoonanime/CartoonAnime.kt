@@ -38,8 +38,6 @@ class CartoonAnime : MainAPI() {
     private val ua =
         "Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-
-    // Basic base64("rabee3yamen:d^AFi%Mu9Th5Wc7uLwh1nEMG8fp2*CW@")
     private val auth = "Basic cmFiZWUzeWFtZW46ZF5BRmklTXU5VGg1V2M3dUx3aDFuRU1HOGZwMipDV0A="
 
     private val baseV3 = "https://base-v3.apps-anime.com/"
@@ -53,10 +51,6 @@ class CartoonAnime : MainAPI() {
     )
 
     @Volatile private var cachedApi: String? = null
-
-    // ---------------------------------------------------------------
-    // Network / JSON helpers
-    // ---------------------------------------------------------------
 
     private suspend fun api(): String {
         cachedApi?.let { return it }
@@ -106,10 +100,6 @@ class CartoonAnime : MainAPI() {
         }
     }
 
-    // ---------------------------------------------------------------
-    // Main page
-    // ---------------------------------------------------------------
-
     private data class Row(val title: String, val path: String, val paged: Boolean)
 
     private val rows = listOf(
@@ -135,10 +125,6 @@ class CartoonAnime : MainAPI() {
         val list = (0 until arr.length()).mapNotNull { toSearch(arr.optJSONObject(it)) }
         return newHomePageResponse(request.name, list, hasNext = paged && list.isNotEmpty())
     }
-
-    // ---------------------------------------------------------------
-    // Search / item parsing
-    // ---------------------------------------------------------------
 
     private fun toSearch(obj: JSONObject?): SearchResponse? {
         if (obj == null) return null
@@ -176,10 +162,6 @@ class CartoonAnime : MainAPI() {
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
-
-    // ---------------------------------------------------------------
-    // Load (details + episodes)
-    // ---------------------------------------------------------------
 
     override suspend fun load(url: String): LoadResponse {
         val id = url.substringAfter("/anime/").substringBefore("?").substringBefore("/").trim()
@@ -256,10 +238,6 @@ class CartoonAnime : MainAPI() {
         }
     }
 
-    // ---------------------------------------------------------------
-    // Link resolution
-    // ---------------------------------------------------------------
-
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -295,7 +273,6 @@ class CartoonAnime : MainAPI() {
                     }
 
                     link.contains("photos.google.com") -> {
-                        // غير قابل للتشغيل المباشر
                     }
 
                     else -> {
@@ -308,7 +285,6 @@ class CartoonAnime : MainAPI() {
                     }
                 }
             } catch (_: Exception) {
-                // تابع بقية السيرفرات
             }
         }
         return found
@@ -344,10 +320,6 @@ class CartoonAnime : MainAPI() {
         "144p" -> Qualities.P144.value
         else -> Qualities.Unknown.value
     }
-
-    // ---------------------------------------------------------------
-    // Misc
-    // ---------------------------------------------------------------
 
     private fun enc(s: String): String =
         try { URLEncoder.encode(s, "UTF-8") } catch (_: Exception) { s }

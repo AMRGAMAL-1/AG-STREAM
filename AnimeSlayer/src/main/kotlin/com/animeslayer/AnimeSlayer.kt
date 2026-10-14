@@ -55,10 +55,6 @@ class AnimeSlayer : MainAPI() {
         "Accept" to "application/json, text/plain, */*"
     )
 
-    // =========================================================================
-    // Main page catalogs
-    // =========================================================================
-
     override val mainPage = mainPageOf(
         "latest_episodes"      to "أحدث الحلقات",
         "currently_airing"     to "يُعرض الآن",
@@ -81,10 +77,6 @@ class AnimeSlayer : MainAPI() {
             hasNext = false
         )
     }
-
-    // =========================================================================
-    // Search
-    // =========================================================================
 
     override suspend fun search(query: String): List<SearchResponse> =
         fetchPublished("filter", mapOf("anime_name" to query))
@@ -117,10 +109,6 @@ class AnimeSlayer : MainAPI() {
             this.posterUrl = poster
         }
     }
-
-    // =========================================================================
-    // Details + episodes
-    // =========================================================================
 
     override suspend fun load(url: String): LoadResponse {
         val animeId = Regex("""/anime/(\d+)""").find(url)?.groupValues?.get(1)?.toIntOrNull()
@@ -216,10 +204,6 @@ class AnimeSlayer : MainAPI() {
         return s
     }
 
-    // =========================================================================
-    // loadLinks: fw -> direct links -> extractors
-    // =========================================================================
-
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -292,8 +276,6 @@ class AnimeSlayer : MainAPI() {
             url.startsWith("http://ok.ru") -> url.replaceFirst("http://", "https://")
             else -> url
         }
-
-        // Direct media files served straight from the fw response.
         if (looksLikeMedia(link)) {
             emitMedia(link, mainUrl, callback)
             return true
@@ -305,9 +287,6 @@ class AnimeSlayer : MainAPI() {
             false
         }
         if (extracted) return true
-
-        // StreamTape is handled manually so we never clash with the built-in
-        // extractor (which is tried first above) and still cover `.to` mirrors.
         if (link.contains("streamtape")) return streamtapeExtract(link, callback)
 
         return tryProviderExtract(link, callback)
@@ -372,7 +351,6 @@ class AnimeSlayer : MainAPI() {
             Regex("""(?:file|src)\s*:\s*'([^']+)'""").findAll(page).forEach { m ->
                 addMedia(m.groupValues[1], m3u8, video)
             }
-            // streamvid: src:"host,path" -> <host><path>/index-v1-a1.m3u8
             Regex("""src:\s*"([^",]+),([^"]+)""").findAll(page).forEach { m ->
                 val host = m.groupValues[1].replace("\\/", "/")
                 val path = m.groupValues[2].replace("\\/", "/")
@@ -442,10 +420,6 @@ class AnimeSlayer : MainAPI() {
         if (value < radix) return Integer.toString(value, radix)
         return packerSymbol(value / radix, radix) + Integer.toString(value % radix, radix)
     }
-
-    // =========================================================================
-    // Helpers
-    // =========================================================================
 
     private fun parseType(raw: String): TvType = when (raw.trim().lowercase()) {
         "movie" -> TvType.AnimeMovie

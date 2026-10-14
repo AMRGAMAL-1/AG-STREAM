@@ -37,9 +37,6 @@ object NativeLib {
             if (loaded) return
             val so = findOrExtract(context)
             System.load(so.absolutePath)
-            // The native library shares global OpenSSL/BoringSSL state and is NOT
-            // thread-safe. Perform the first (one-time initialisation) call while
-            // still holding the lock so concurrent callers never race the init.
             runCatching { buildSecure(FakeContext(context.applicationContext ?: context)) }
             loaded = true
         }
@@ -47,19 +44,14 @@ object NativeLib {
 
     fun secureId(context: Context): String? {
         load(context)
-        // Serialize every native call: the .so has process-wide mutable state and
-        // concurrent calls corrupt the heap (crashes surface in unrelated threads).
         synchronized(lock) {
             val fresh = runCatching {
                 buildSecure(FakeContext(context.applicationContext ?: context))
             }.getOrNull()
             if (!fresh.isNullOrEmpty() && fresh.length > 8) {
-                // Process-global cache survives CloudStream plugin (re)loads, which
-                // create a new ClassLoader where the .so cannot be re-opened.
                 System.setProperty(TOKEN_PROP, fresh)
                 return fresh
             }
-            // Native unavailable (e.g. after a plugin reload) -> fall back to cache.
             return System.getProperty(TOKEN_PROP)?.takeIf { it.isNotEmpty() }
         }
     }
@@ -75,11 +67,6 @@ object NativeLib {
         val abis = LinkedHashSet<String>()
         abis.addAll(Build.SUPPORTED_ABIS)
         if (Build.CPU_ABI.isNotEmpty()) abis.add(Build.CPU_ABI)
-
-        // A unique directory per load attempt is required: Android's linker keys
-        // loaded libraries by real path + ClassLoader namespace, so re-opening the
-        // same path from a new (reloaded) plugin ClassLoader fails with
-        // "already opened by ClassLoader ... can't open in ClassLoader ...".
         val tag = java.lang.Long.toString(System.nanoTime(), 36)
         val base = File(context.filesDir, "cima_native")
         val dir = File(base, tag).apply { mkdirs() }
@@ -93,7 +80,6 @@ object NativeLib {
             out.setExecutable(true, false)
             out.setWritable(true)
             if (out.length() > 0L) {
-                // Drop copies left behind by previous (re)loads.
                 base.listFiles()?.forEach { if (it != dir) runCatching { it.deleteRecursively() } }
                 return out
             }

@@ -45,13 +45,10 @@ object EgywatchHostExtractor {
         ) {
             if (urlsite.isBlank()) return
             val us = urlsite.trim()
-            // Method is decided by the endpoint filename: these scrapers only answer POST
-            // regardless of an `?api=` suffix; everything else is a GET.
             val file = us.substringAfterLast('/').substringBefore('?')
             val isPost = file in POST_ENDPOINTS
             rules += HostRule(hostIds, domains, us, isPost = isPost)
         }
-        // Generated from hosts_config.json (string urlsite)
         add(listOf("uqload"), listOf("uqload.com"), "https://mawdhou3.com/scrapefinal/uqload.php?api=")
         add(listOf("71stream"), listOf("71stream.com"), "https://mawdhou3.com/scrapefinal/71stream.php?api=")
         add(listOf("Upzur"), listOf("Upzur.com"), "https://mawdhou3.com/scrapefinal/upzur.php")
@@ -96,7 +93,6 @@ object EgywatchHostExtractor {
         add(listOf("vidnest"), listOf("vidnest.com"), "https://mawdhou3.com/scrapefinal/vidnest.php?api=")
         add(listOf("turbovidhls"), listOf("turbovidhls.com"), "https://mawdhou3.com/scrapefinal/turbovidhls.php?api=")
         add(listOf("arabseeeed.com"), listOf("arabseed"), "https://mawdhou3.com/test.php?api=")
-        // Hosts seen live in captured Egywatch traffic but absent from hosts/config domain lists.
         add(listOf("minochinos"), listOf("minochinos.com"), "https://mawdhou3.com/scrapefinal/earnvids.php")
         add(listOf("callistanise"), listOf("callistanise.com"), "https://mawdhou3.com/scrapefinal/earnvids.php")
         add(listOf("hanerix"), listOf("hanerix.com"), "https://mawdhou3.com/scrapefinal/earnvids.php")
@@ -105,7 +101,6 @@ object EgywatchHostExtractor {
         add(listOf("forafile"), listOf("forafile.com"), "https://mawdhou3.com/recuperepost.php")
         add(listOf("fasel-hd"), listOf("fasel-hd.co"), "https://mawdhou3.com/scripttestfasel.php?api=")
         add(listOf("mp4plus"), listOf("mp4plus.cyou"), "https://mawdhou3.com/scrapefinal/earnvids.php")
-        // Remaining config hosts (GET via turki.php / post.php) and their live aliases.
         add(listOf("vidtube"), listOf("vidtube.one", "vidtube.com"), "https://mawdhou3.com/scrapefinal/vidtubepost.php")
         add(listOf("okhd"), listOf("okhd.site", "okhd.com"), "https://mawdhou3.com/scrapefinal/turki.php")
         add(listOf("film77"), listOf("film77.xyz", "film77.com"), "https://mawdhou3.com/scrapefinal/turki.php")
@@ -122,7 +117,6 @@ object EgywatchHostExtractor {
         val h = value.substringBefore(':').lowercase()
         val parts = h.split('.').filter { it.isNotBlank() }
         if (parts.isEmpty()) return h
-        // Strip the public suffix-ish tail, then drop generic prefixes.
         val core = if (parts.size >= 2) parts[parts.size - 2] else parts[0]
         return core.removePrefix("www")
     }
@@ -177,7 +171,6 @@ object EgywatchHostExtractor {
                 if (emitFrom(body, server, referer, callback)) return true
                 return false
             }
-            // POST
             val full = if (us.startsWith("http")) us else SCRAPER_DEFAULT + us.removePrefix(SCRAPER_DEFAULT)
             val response = runCatching {
                 app.get(link, headers = fetchHeaders, referer = referer, allowRedirects = true)
@@ -195,8 +188,6 @@ object EgywatchHostExtractor {
             }.getOrNull()
             return emitFrom(body, server, referer, callback)
         }
-
-        // fallback
         val fallbackGet = mapOf(
             "uqload" to "scrapefinal/uqload.php",
             "fasel-hd" to "scripttestfasel.php",
@@ -266,7 +257,6 @@ object EgywatchHostExtractor {
         if (trimmed.startsWith("{")) {
             val json = runCatching { JSONObject(trimmed) }.getOrNull() ?: return emptyList()
             if (json.optString("status") != "success" && !json.has("filtered_content") && !json.has("sources") && !json.has("file")) {
-                // still try
             }
             val content = json.optJSONArray("filtered_content") ?: json.optJSONArray("sources") ?: json.optJSONArray("links")
             val quality = json.optJSONArray("Quality") ?: json.optJSONArray("qualities")

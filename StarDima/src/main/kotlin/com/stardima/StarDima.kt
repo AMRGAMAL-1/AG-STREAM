@@ -57,8 +57,6 @@ class StarDima : MainAPI() {
         private const val DETAIL_SCHEME = "https://stardima.app/video/"
         private const val EPISODE_DATA = "stardima:episode:"
         private const val MOVIE_DATA = "stardima:movie:"
-        // `newEpisode` runs its url through `fixUrl()`, which prepends mainUrl to
-        // anything not starting with http; use an absolute URL for episode data.
         private const val EPISODE_URL = "https://stardima.app/api/episodes/"
     }
 
@@ -76,8 +74,6 @@ class StarDima : MainAPI() {
 
     @Volatile
     private var resolvedBase: String? = null
-
-    // ---------------------------------------------------------------- plumbing
 
     private fun headers(): Map<String, String> = mapOf(
         "User-Agent" to APP_UA,
@@ -132,8 +128,6 @@ class StarDima : MainAPI() {
     private fun normalizeType(raw: String?): String =
         if (raw.equals("series", true) || raw.equals("tv", true)) "series" else "movie"
 
-    // ---------------------------------------------------------------- home
-
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val base = base()
         val lists = mutableListOf<HomePageList>()
@@ -171,8 +165,6 @@ class StarDima : MainAPI() {
         val json = getJson(url) ?: return emptyList()
         return parseVideos(json.optJSONArray("videos"))
     }
-
-    // ---------------------------------------------------------------- search
 
     override suspend fun search(query: String): List<SearchResponse> {
         val base = base()
@@ -220,8 +212,6 @@ class StarDima : MainAPI() {
         }
         return out
     }
-
-    // ---------------------------------------------------------------- load
 
     override suspend fun load(url: String): LoadResponse {
         val base = base()
@@ -286,8 +276,6 @@ class StarDima : MainAPI() {
             this.plot = message
         }
 
-    // ---------------------------------------------------------------- links
-
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -318,10 +306,6 @@ class StarDima : MainAPI() {
                 servers.put(server)
             }
         }
-
-        // Same calls the official app makes: plain /servers, plus the AES-wrapped
-        // /serversvip (used per-episode in the app) as a fallback, and for movies
-        // the servers embedded in the video detail payload.
         if (movie) {
             absorb(getJson("$base/api/video/$id")?.optJSONArray("servers"))
         } else {

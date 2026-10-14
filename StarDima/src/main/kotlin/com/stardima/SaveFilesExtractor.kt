@@ -29,12 +29,7 @@ class SaveFilesExtractor : ExtractorApi() {
         val embedUrl = url.trim().trimEnd('/')
         val fileCode = embedUrl.substringAfterLast("/")
         if (fileCode.isBlank()) return
-
-        // Fast path: plain OkHttp, no browser needed.
         if (resolve(embedUrl, fileCode, cookie = null, callback)) return
-
-        // Fallback: earn the Cloudflare challenge cookies in a hidden WebView,
-        // then replay the same flow with the Cookie header attached.
         val cookie = try {
             CfxSolver.cookiesFor(embedUrl)
         } catch (_: Throwable) {
@@ -51,11 +46,9 @@ class SaveFilesExtractor : ExtractorApi() {
         cookie: String?,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Seed the session cookie used by the /dl endpoint (harmless if it 403s).
         try {
             app.get(embedUrl, headers = baseHeaders(cookie), referer = embedUrl)
         } catch (_: Throwable) {
-            // continue; /dl may still answer
         }
 
         val dlText = try {
@@ -84,8 +77,6 @@ class SaveFilesExtractor : ExtractorApi() {
             generated.forEach { callback(it) }
             return true
         }
-        // Fallback: emit without the OkHttp-based M3u8Helper validation so the
-        // player (Cronet, browser-like TLS) can fetch gated HLS CDNs itself.
         callback(
             ExtractorLink(
                 source = m3u8,
