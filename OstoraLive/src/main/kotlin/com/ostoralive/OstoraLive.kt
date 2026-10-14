@@ -32,6 +32,7 @@ class OstoraLiveProvider : MainAPI() {
     private val ivHex = "a9c21f8d7e6b4a9db12e4f9d5c1a7b8e"
     private val defaultUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     private val referer = "https://www.ostora.tv/"
+    private val deadHosts = setOf("random-cdn.link", "x.random-cdn.link", "tv.radarapp.me")
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class ApiRoot(
@@ -219,16 +220,34 @@ class OstoraLiveProvider : MainAPI() {
         }
     }
 
-    private fun extractUrls(src: String): List<String> {
-        return Regex("""https?://[^\s"'<>\\]+""").findAll(src)
-            .map { it.value.trim().trimEnd(';', ',', '.', ')') }
-            .filter { it.startsWith("http") }
-            .filter {
-                val host = try { java.net.URL(it).host } catch (_: Exception) { "" }
-                host.isNotBlank() && host.length <= 64
-            }
-            .distinct()
-            .toList()
+    private fun hostOf(url: String): String {
+        return try { java.net.URL(url).host.lowercase() } catch (_: Exception) { "" }
+    }
+
+    private fun isDeadUrl(url: String): Boolean {
+        val host = hostOf(url)
+        if (host.isBlank() || host.length > 64) return true
+        if (host in deadHosts) return true
+        return false
+    }
+
+    private fun parseSources(src: String): List<String> {
+        val out = mutableListOf<String>()
+        for (rawPart in src.split("<<R>>")) {
+            var chunk = rawPart.trim()
+            if (chunk.isEmpty()) continue
+            if ("<F>" in chunk) chunk = chunk.substringAfter("<F>")
+            if ("###" in chunk) chunk = chunk.substringBefore("###")
+            if ("|" in chunk) chunk = chunk.substringBefore("|")
+            chunk = chunk.trim()
+            if (chunk.isEmpty()) continue
+            Regex("""https?://[^\s"'<>\\!]+""").findAll(chunk)
+                .map { it.value.trim().trimEnd(';', ',', '.', ')', '!') }
+                .filter { it.startsWith("http") }
+                .distinct()
+                .forEach { u -> if (!isDeadUrl(u)) out.add(u) }
+        }
+        return out.distinct()
     }
 
     override suspend fun loadLinks(
@@ -246,7 +265,7 @@ class OstoraLiveProvider : MainAPI() {
         val ua = ch.agent?.takeIf { it.isNotBlank() } ?: defaultUa
         val headers = mapOf("User-Agent" to ua, "Referer" to referer)
         var emitted = false
-        for (u in extractUrls(src)) {
+        for (u in parseSources(src)) {
             try {
                 val low = u.lowercase()
                 when {

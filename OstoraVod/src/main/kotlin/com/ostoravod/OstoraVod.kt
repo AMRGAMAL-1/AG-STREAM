@@ -35,7 +35,9 @@ class OstoraVodProvider : MainAPI() {
     private val defaultUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     private val referer = "https://www.ostora.tv/"
     private val widevineUuid: UUID = UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed")
+    private val clearkeyUuid: UUID = UUID.fromString("e2719d58-a985-b3c9-781a-b030af78d30e")
     private val widevineBrand = "2be49af0-6fbd-4511-8e11-3d6523185bb4"
+    private val deadHosts = setOf("random-cdn.link", "x.random-cdn.link", "tv.radarapp.me")
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class ApiRoot(
@@ -207,26 +209,61 @@ class OstoraVodProvider : MainAPI() {
         }
     }
 
-    private fun extractUrls(src: String): List<String> {
-        return Regex("""https?://[^\s"'<>\\]+""").findAll(src)
-            .map { it.value.trim().trimEnd(';', ',', '.', ')') }
-            .filter { it.startsWith("http") }
-            .filter {
-                val host = try { java.net.URL(it).host } catch (_: Exception) { "" }
-                host.isNotBlank() && host.length <= 64
-            }
-            .distinct()
-            .toList()
+    private fun hostOf(url: String): String {
+        return try { java.net.URL(url).host.lowercase() } catch (_: Exception) { "" }
     }
 
-    private fun extractToken(src: String): String? {
-        return Regex("""###([A-Za-z0-9+/:._=-]{8,})""").find(src)?.groupValues?.get(1)?.trim()
+    private fun isDeadUrl(url: String): Boolean {
+        val host = hostOf(url)
+        if (host.isBlank() || host.length > 64) return true
+        if (host in deadHosts) return true
+        if (host.endsWith(".shop") && host[0].isDigit() && host.length > 40) return true
+        if (url.trimEnd('/') == "https://3arabflix.com" || url.trimEnd('/') == "http://3arabflix.com") return true
+        return false
+    }
+
+    private fun toB64UrlPadded(s: String): String {
+        var t = s.trim().replace("+", "-").replace("/", "_")
+        t = t.trimEnd('=')
+        while (t.length % 4 != 0) t += "="
+        return t
+    }
+
+    private fun parseSources(src: String): List<Pair<String, String?>> {
+        val out = mutableListOf<Pair<String, String?>>()
+        val chunks = src.split("<<R>>")
+        for (rawPart in chunks) {
+            var chunk = rawPart.trim()
+            if (chunk.isEmpty()) continue
+            if ("<F>" in chunk) chunk = chunk.substringAfter("<F>")
+            var token: String? = null
+            if ("###" in chunk) {
+                token = chunk.substringAfter("###").trim().split(Regex("\\s")).firstOrNull()?.trim()?.takeIf { it.length >= 8 }
+                chunk = chunk.substringBefore("###")
+            }
+            if ("|" in chunk) chunk = chunk.substringBefore("|")
+            chunk = chunk.trim()
+            if (chunk.isEmpty()) continue
+            val urls = Regex("""https?://[^\s"'<>\\!]+""").findAll(chunk)
+                .map { it.value.trim().trimEnd(';', ',', '.', ')', '!') }
+                .filter { it.startsWith("http") }
+                .distinct()
+                .toList()
+            var first = true
+            for (u in urls) {
+                if (isDeadUrl(u)) continue
+                out.add(u to if (first) token else null)
+                first = false
+            }
+        }
+        return out.distinct()
     }
 
     private suspend fun emitDirect(
         title: String,
         url: String,
         ua: String,
+        token: String?,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val headers = mapOf("User-Agent" to ua, "Referer" to referer)
@@ -234,35 +271,63 @@ class OstoraVodProvider : MainAPI() {
         return try {
             when {
                 ".mpd" in low -> {
+                    if (token != null && ":" in token) {
+                        val parts = token.split(":", limit = 2).map { it.trim() }
+                        if (parts.size == 2 && parts[0].length >= 8 && parts[1].length >= 8) {
+                            val keyB64 = toB64UrlPadded(parts[0])
+                            val kidB64 = toB64UrlPadded(parts[1])
+                            try {
+                                app.get(url, headers = headers, timeout = 15).text
+                            } catch (e: Exception) {
+                                val msg = (e.message ?: "").lowercase()
+                                if ("403" in msg || "404" in msg || "forbidden" in msg || "not found" in msg) {
+                                    Log.d(TAG, "dead mpd skipped ($url): ${e.message}")
+                                    return false
+                                }
+                            }
+                            callback.invoke(
+                                newDrmExtractorLink(
+                                    source = this.name,
+                                    name = "$title - تلقائي",
+                                    url = url,
+                                    type = ExtractorLinkType.DASH,
+                                    uuid = clearkeyUuid,
+                                ) {
+                                    this.referer = referer
+                                    this.headers = headers
+                                    this.quality = Qualities.Unknown.value
+                                    this.kid = kidB64
+                                    this.key = keyB64
+                                    this.kty = "oct"
+                                }
+                            )
+                            return true
+                        }
+                    }
                     var mpd: String? = null
+                    var dead = false
                     try {
                         mpd = app.get(url, headers = headers, timeout = 15).text
-                    } catch (_: Exception) { }
-                    if (mpd != null && mpd.contains("ContentProtection") && mpd.contains("edef8ba9")) {
-                        callback.invoke(
-                            newDrmExtractorLink(
-                                source = this.name,
-                                name = "$title - تلقائي (DRM)",
-                                url = url,
-                                type = ExtractorLinkType.DASH,
-                                uuid = widevineUuid,
-                            ) {
-                                this.referer = referer
-                                this.headers = headers
-                                this.quality = Qualities.Unknown.value
-                                this.licenseUrl = "https://shahid.la.drm.cloud/acquire-license/widevine?BrandGuid=$widevineBrand"
-                            }
-                        )
-                    } else {
-                        callback.invoke(
-                            newExtractorLink(this.name, "$title - تلقائي", url) {
-                                this.referer = referer
-                                this.headers = headers
-                                this.quality = Qualities.Unknown.value
-                                this.type = ExtractorLinkType.DASH
-                            }
-                        )
+                    } catch (e: Exception) {
+                        val msg = (e.message ?: "").lowercase()
+                        if ("403" in msg || "404" in msg || "forbidden" in msg || "not found" in msg) dead = true
                     }
+                    if (dead) {
+                        Log.d(TAG, "dead mpd skipped ($url)")
+                        return false
+                    }
+                    if (mpd != null && mpd.contains("ContentProtection") && mpd.contains("edef8ba9")) {
+                        Log.d(TAG, "drm mpd without key, skipped ($url)")
+                        return false
+                    }
+                    callback.invoke(
+                        newExtractorLink(this.name, "$title - تلقائي", url) {
+                            this.referer = referer
+                            this.headers = headers
+                            this.quality = Qualities.Unknown.value
+                            this.type = ExtractorLinkType.DASH
+                        }
+                    )
                     true
                 }
                 else -> {
@@ -291,11 +356,10 @@ class OstoraVodProvider : MainAPI() {
         val it = items.find { it.id == link.id } ?: return false
         val src = it.source ?: return false
         val ua = it.agent?.takeIf { a -> a.isNotBlank() } ?: defaultUa
-        val token = extractToken(src)
-        val urls = extractUrls(src)
-        if (urls.isEmpty()) return false
+        val sources = parseSources(src)
+        if (sources.isEmpty()) return false
         var emitted = false
-        for (u in urls) {
+        for ((u, token) in sources) {
             val low = u.lowercase()
             try {
                 if ("youtube.com" in low || "youtu.be" in low) {
@@ -317,14 +381,14 @@ class OstoraVodProvider : MainAPI() {
                 } else if (low.contains(".m3u8") || low.contains(".mpd") || low.contains(".mp4") ||
                     low.contains("/hls/") || low.contains("extension=ts") || low.endsWith(".json")
                 ) {
-                    if (emitDirect(it.name ?: "Ostora", u, ua, callback)) emitted = true
+                    if (emitDirect(it.name ?: "Ostora", u, ua, token, callback)) emitted = true
                 } else {
                     val collected = mutableListOf<ExtractorLink>()
                     try {
                         loadExtractor(u, referer, subtitleCallback) { collected.add(it) }
                     } catch (_: Exception) { }
                     if (collected.isEmpty()) {
-                        if (emitDirect(it.name ?: "Ostora", u, ua, callback)) emitted = true
+                        if (emitDirect(it.name ?: "Ostora", u, ua, token, callback)) emitted = true
                     } else {
                         collected.forEach { ext ->
                             callback.invoke(
@@ -341,7 +405,6 @@ class OstoraVodProvider : MainAPI() {
                 }
             } catch (_: Exception) { }
         }
-        if (token != null) Log.d(TAG, "token present for ${it.name}")
         Log.d(TAG, "links for ${it.name}: $emitted")
         return emitted
     }
