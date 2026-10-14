@@ -11,5 +11,5 @@ cloudstream {
         "Anime"
     )
 
-    iconUrl = "https://amd.brstej.com/22.png"
+    iconUrl = "https://brstej.com/22.png"
 }
