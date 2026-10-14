@@ -20,7 +20,6 @@ class QanwatLiveProvider : MainAPI() {
 
     private fun bannerUrl(thumb: String?): String? {
         if (thumb.isNullOrBlank()) return null
-        // Blogger s72 thumbnails -> higher-res channel banner
         return thumb.replace(Regex("""/s\d+(-c)?(-rw)?/"""), "/s400/")
     }
 
@@ -70,11 +69,9 @@ class QanwatLiveProvider : MainAPI() {
             ?: document.selectFirst("h1")?.text()?.trim()
             ?: return null
         if (title.isBlank()) return null
-        // Channel banner (og:image is the full-size w1200 banner)
         val banner = document.selectFirst("meta[property=og:image]")?.attr("content")?.let { fixUrl(it) }
         val plot = document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
             ?: document.selectFirst("meta[name=description]")?.attr("content")?.trim()
-        // Player page behind the channel iframe
         val iframeSrc = document.selectFirst("iframe#iframe[src]")?.attr("src")?.takeIf { it.isNotBlank() }
             ?: document.select("iframe[src]").firstOrNull {
                 val src = it.attr("src")
@@ -109,13 +106,11 @@ class QanwatLiveProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // data is the absolute tv.qanwatlive.com player URL saved at load()
         val playerHtml = try {
             app.get(data, referer = mainUrl).text
         } catch (e: Exception) {
             return false
         }
-        // setupJWPlayer("<m3u8>", ...) or any embedded stream url
         val setupUrl = Regex("""setupJWPlayer\(\s*"([^"]+)"""").find(playerHtml)?.groupValues?.get(1)?.trim()
         val scraped = Regex("""https?://[^\s"'<>\\]+\.(?:m3u8|mp4)(?:\?[^\s"'<>\\]*)?""", RegexOption.IGNORE_CASE)
             .findAll(playerHtml).map { it.value }.toList().distinct()
@@ -136,12 +131,10 @@ class QanwatLiveProvider : MainAPI() {
                     emitted = true
                     return@forEach
                 }
-                // HLS master -> expand every rendition (240p/360p/480p/720p...) + Auto
                 val master = try {
                     app.get(streamUrl, headers = mapOf("Referer" to referer)).text
                 } catch (_: Exception) { null }
                 if (master.isNullOrBlank() || !master.contains("#EXT-X-STREAM-INF")) {
-                    // Single-variant playlist or direct file -> emit as-is
                     callback.invoke(
                         newExtractorLink(source = name, name = "$name - تلقائي", url = streamUrl) {
                             this.referer = referer
@@ -169,7 +162,6 @@ class QanwatLiveProvider : MainAPI() {
                     )
                     foundVariant = true
                 }
-                // Master entry for auto selection
                 callback.invoke(
                     newExtractorLink(source = name, name = "$name - تلقائي", url = streamUrl) {
                         this.referer = referer
