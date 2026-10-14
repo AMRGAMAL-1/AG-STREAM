@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import org.jsoup.nodes.Element
+import java.net.URLDecoder
 import java.net.URLEncoder
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -29,72 +30,56 @@ class MovizLandProvider : MainAPI() {
         "$mainUrl/category/movies/أفلام-كوري/" to "أفلام كوري",
     )
 
-    private fun toSearchResult(element: Element): SearchResponse? {
-        val linkTag = element.selectFirst("a[href]") ?: return null
-        var href = linkTag.attr("href")?.trim() ?: return null
+    private fun decodeHref(href: String): String {
+        return try { URLDecoder.decode(href, "UTF-8") } catch (_: Exception) { href }
+    }
+
+    private fun linkToResult(a: Element): SearchResponse? {
+        var href = a.attr("href").trim()
         if (href.isBlank() || href == "#") return null
         if (href.startsWith("/")) href = mainUrl + href
         if (!href.contains("moviz.land")) return null
-        if (href.contains("/category/") || href.contains("/genre/") || href.contains("/series/") && href.endsWith("/series/")) return null
+        // Site links are percent-encoded: decode before matching (مشاهدة-فيلم / مشاهدة-مسلسل)
+        val decoded = decodeHref(href)
+        if (!decoded.contains("مشاهد")) return null
+        if (decoded.contains("/category/") || decoded.contains("/genre/")) return null
+        if (href.endsWith("/watch/") || href.contains("/page/")) return null
 
-        val title = element.selectFirst("img")?.attr("alt")?.trim()?.takeIf { it.isNotBlank() }
-            ?: linkTag.attr("title")?.trim()?.takeIf { it.isNotBlank() }
-            ?: element.text()?.trim()?.takeIf { it.isNotBlank() }
+        val card = a.closest("article") ?: a.parent() ?: a
+        val title = a.selectFirst("img")?.attr("alt")?.trim()?.takeIf { it.isNotBlank() }
+            ?: card.selectFirst("img")?.attr("alt")?.trim()?.takeIf { it.isNotBlank() }
+            ?: a.attr("title")?.trim()?.takeIf { it.isNotBlank() }
+            ?: a.text()?.trim()?.takeIf { it.length in 4..200 }
             ?: return null
-        if (title.length < 3) return null
 
-        val img = element.selectFirst("img")
-        val posterUrl = img?.attr("src")?.takeIf { it.isNotBlank() && !it.contains("data:") }
+        val img = a.selectFirst("img") ?: card.selectFirst("img")
+        val posterUrl = img?.attr("src")?.takeIf { it.isNotBlank() && !it.startsWith("data:") }?.let { fixUrl(it) }
 
-        val isSeries = href.contains("مسلسل") || title.contains("مسلسل") ||
-            title.contains("الحلقة") || title.contains("الموسم") ||
-            element.selectFirst(".episode-card, .mita-single-season-card") != null
+        val isSeries = decoded.contains("مسلسل") || title.contains("مسلسل") ||
+            title.contains("الحلقة") || title.contains("الموسم")
 
         return if (isSeries) {
             newTvSeriesSearchResponse(title, fixUrl(href), TvType.TvSeries) {
-                this.posterUrl = posterUrl?.let { fixUrl(it) }
+                this.posterUrl = posterUrl
             }
         } else {
             newMovieSearchResponse(title, fixUrl(href), TvType.Movie) {
-                this.posterUrl = posterUrl?.let { fixUrl(it) }
+                this.posterUrl = posterUrl
             }
         }
     }
 
+    private fun toSearchResult(element: Element): SearchResponse? {
+        val linkTag = element.selectFirst("a[href]") ?: return null
+        return linkToResult(linkTag)
+    }
+
     private fun parseListing(document: org.jsoup.nodes.Document): List<SearchResponse> {
-        val selectors = listOf(
-            "article a[href]",
-            ".movie-card a[href]",
-            ".related-card-link",
-            ".episodes-grid a[href]",
-            "a.related-card-link",
-            ".grid a[href*=مشاهدة-]"
-        )
         val found = linkedMapOf<String, SearchResponse>()
-        document.select("a[href*=مشاهدة-فيلم], a[href*=مشاهدة-مسلسل]").forEach { a ->
-            val href = fixUrl(a.attr("href"))
-            if (found.containsKey(href)) return@forEach
-            val card = a.closest("article") ?: a.parent() ?: a
-            val title = a.selectFirst("img")?.attr("alt")
-                ?: a.attr("title").takeIf { it.isNotBlank() }
-                ?: card.text().trim().takeIf { it.length in 4..200 }
-                ?: return@forEach
-            val img = a.selectFirst("img") ?: card.selectFirst("img")
-            val poster = img?.attr("src")?.takeIf { it.isNotBlank() && it.startsWith("http") }
-            val isSeries = href.contains("مسلسل") || title.contains("مسلسل") || title.contains("الحلقة")
-            val res = if (isSeries) {
-                newTvSeriesSearchResponse(title.trim(), href, TvType.TvSeries) { this.posterUrl = poster }
-            } else {
-                newMovieSearchResponse(title.trim(), href, TvType.Movie) { this.posterUrl = poster }
-            }
-            found[href] = res
-        }
-        if (found.isEmpty()) {
-            selectors.forEach { sel ->
-                document.select(sel).forEach { el ->
-                    toSearchResult(el)?.let { found[it.url] = it }
-                }
-            }
+        document.select("a[href]").forEach { a ->
+            try {
+                linkToResult(a)?.let { if (!found.containsKey(it.url)) found[it.url] = it }
+            } catch (_: Exception) { }
         }
         return found.values.toList()
     }
@@ -243,6 +228,100 @@ class MovizLandProvider : MainAPI() {
         @JsonProperty("info") val info: String?
     )
 
+    /**
+     * Generic embed harvester for hosts without a dedicated extractor
+     * (e.g. upbom): unpacks Dean-Edwards packed JS and extracts direct
+     * <source>/file:/.m3u8/.mp4 links with per-quality labels.
+     */
+    private suspend fun harvestEmbed(
+        embedUrl: String,
+        serverName: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
+            val rawHtml = app.get(embedUrl, referer = referer).text
+            val html = try { JsUnpacker(rawHtml).unpack() ?: rawHtml } catch (_: Exception) { rawHtml }
+            var found = false
+            val seen = mutableSetOf<String>()
+            fun emit(raw: String, hint: String?) {
+                var u = raw.trim().replace("\\/", "/")
+                if (u.startsWith("//")) u = "https:$u"
+                if (!u.startsWith("http") || !seen.add(u)) return
+                val low = u.lowercase()
+                if (low.contains(".css") || low.contains(".js") || low.contains(".png") ||
+                    low.contains(".jpg") || low.contains(".jpeg") || low.contains(".gif") ||
+                    low.contains(".webp") || low.contains(".svg") || low.contains(".woff") ||
+                    low.contains("plyr.io") || low.contains("vast") || low.contains("google") ||
+                    low.contains("gstatic") || low.contains("facebook") || low.contains("analytics") ||
+                    low.contains("plausible") || low.contains("histats")
+                ) return
+                val qInt = extractQualityInt((hint ?: "") + " " + u)
+                val qLabel = hint?.takeIf { it.isNotBlank() } ?: "Auto"
+                callback.invoke(
+                    newExtractorLink(source = name, name = "$serverName - $qLabel", url = u) {
+                        this.referer = embedUrl
+                        this.quality = qInt
+                    }
+                )
+                found = true
+            }
+            // <source src="...mp4" size="720">
+            Regex("""<source[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .findAll(html).forEach { m ->
+                    val tag = m.value
+                    val size = Regex("""size\s*=\s*["']?(\d+)""", RegexOption.IGNORE_CASE)
+                        .find(tag)?.groupValues?.get(1)?.let { "${it}p" }
+                    emit(m.groupValues[1], size)
+                }
+            // file:"..." + label:"..." pairs (jwplayer-style)
+            Regex(
+                """file\s*:\s*["']([^"']+)["'][^}]{0,200}?label\s*:\s*["']([^"']+)["']""",
+                RegexOption.IGNORE_CASE
+            ).findAll(html).forEach { m -> emit(m.groupValues[1], m.groupValues[2]) }
+            Regex("""file\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .findAll(html).forEach { m -> emit(m.groupValues[1], null) }
+            // generic direct video urls
+            Regex("""https?://[^\s"'<>\\]+\.(?:m3u8|mp4)(?:\?[^\s"'<>\\]*)?""", RegexOption.IGNORE_CASE)
+                .findAll(html).forEach { m -> emit(m.value, null) }
+            // nested iframes -> standard extractors, one level
+            Regex("""<iframe[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .findAll(html).forEach { m ->
+                    var src = m.groupValues[1].trim()
+                    if (src.isBlank() || src.startsWith("data:")) return@forEach
+                    if (src.startsWith("//")) src = "https:$src"
+                    if (!src.startsWith("http")) return@forEach
+                    val low = src.lowercase()
+                    if (low.contains("recaptcha") || low.contains("google")) return@forEach
+                    val collected = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
+                    try {
+                        loadExtractor(src, embedUrl, subtitleCallback) { collected.add(it) }
+                    } catch (_: Exception) { }
+                    collected.forEach { ext ->
+                        var u = ext.url
+                        if (!seen.add(u)) return@forEach
+                        callback.invoke(
+                            newExtractorLink(
+                                source = name,
+                                name = "$serverName - ${ext.name}",
+                                url = u
+                            ) {
+                                this.referer = ext.referer
+                                this.headers = ext.headers
+                                this.quality = ext.quality
+                                this.type = ext.type
+                            }
+                        )
+                        found = true
+                    }
+                }
+            found
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -254,27 +333,36 @@ class MovizLandProvider : MainAPI() {
         } catch (e: Exception) {
             return false
         }
-        val serverCards = watchDoc.select("button.server-card[data-src]")
-        if (serverCards.isEmpty()) {
-            val iframe = watchDoc.selectFirst("iframe#videoPlayer")?.attr("src")
-            if (!iframe.isNullOrBlank()) {
-                loadExtractor(fixUrl(iframe), data, subtitleCallback, callback)
-                return true
+        val serverCards = watchDoc.select(".server-card[data-src]")
+        val servers = serverCards.mapNotNull { card ->
+            val src = card.attr("data-src").trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val label = card.selectFirst(".server-text strong")?.text()?.trim()
+                ?: card.attr("aria-label")?.trim()?.takeIf { it.isNotBlank() }
+                ?: "سيرفر موفيز لاند"
+            Triple(if (src.startsWith("//")) "https:$src" else src, label, card.attr("data-quality") == "1")
+        }.toMutableList()
+        if (servers.isEmpty()) {
+            // Raw-HTML fallback: data-src attributes + iframes (selector-proof)
+            val raw = try { watchDoc.html() } catch (_: Exception) { "" }
+            Regex("""data-src\s*=\s*"([^"]+)"""").findAll(raw).forEach { m ->
+                val u = m.groupValues[1].trim()
+                if (u.startsWith("http") || u.startsWith("//")) {
+                    servers.add(Triple(if (u.startsWith("//")) "https:$u" else u, "سيرفر موفيز لاند", false))
+                }
             }
-            return false
+            Regex("""<iframe[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .findAll(raw).forEach { m ->
+                    val u = m.groupValues[1].trim()
+                    if (u.startsWith("http") || u.startsWith("//")) {
+                        servers.add(Triple(if (u.startsWith("//")) "https:$u" else u, "سيرفر موفيز لاند", false))
+                    }
+                }
         }
+        if (servers.isEmpty()) return false
 
         coroutineScope {
-            serverCards.map { card ->
+            servers.distinctBy { it.first }.map { (url, serverName, isQualityServer) ->
                 async {
-                    val src = card.attr("data-src")?.trim() ?: return@async
-                    if (src.isBlank()) return@async
-                    val serverName = card.selectFirst(".server-text strong")?.text()?.trim()
-                        ?: card.attr("aria-label")?.trim()?.takeIf { it.isNotBlank() }
-                        ?: "سيرفر موفيز لاند"
-                    val isQualityServer = card.attr("data-quality") == "1"
-                    val url = if (src.startsWith("//")) "https:$src" else src
-
                     if (isQualityServer) {
                         try {
                             val apiUrl = "$mainUrl/get_quality.php?url=${java.net.URLEncoder.encode(url, "UTF-8")}"
@@ -301,6 +389,11 @@ class MovizLandProvider : MainAPI() {
                                         try {
                                             loadExtractor(vUrl, data, subtitleCallback) { collectedQ.add(it) }
                                         } catch (_: Exception) { }
+                                        if (collectedQ.isEmpty()) {
+                                            try {
+                                                harvestEmbed(vUrl, "$serverName - $qLabel", data, subtitleCallback, callback)
+                                            } catch (_: Exception) { }
+                                        } else {
                                         collectedQ.forEach { ext ->
                                             callback.invoke(
                                                 newExtractorLink(
@@ -315,6 +408,7 @@ class MovizLandProvider : MainAPI() {
                                                 }
                                             )
                                         }
+                                        }
                                     }
                                 }
                                 return@async
@@ -327,13 +421,11 @@ class MovizLandProvider : MainAPI() {
                         try {
                             loadExtractor(url, data, subtitleCallback) { collected.add(it) }
                         } catch (_: Exception) { }
-                        if (collected.isEmpty() && (url.contains(".m3u8") || url.contains(".mp4"))) {
-                            callback.invoke(
-                                newExtractorLink(source = name, name = serverName, url = url) {
-                                    this.referer = data
-                                    this.quality = Qualities.Unknown.value
-                                }
-                            )
+                        if (collected.isEmpty()) {
+                            // No dedicated extractor matched -> harvest the embed page directly
+                            try {
+                                harvestEmbed(url, serverName, data, subtitleCallback, callback)
+                            } catch (_: Exception) { }
                         } else {
                             collected.forEach { ext ->
                                 callback.invoke(

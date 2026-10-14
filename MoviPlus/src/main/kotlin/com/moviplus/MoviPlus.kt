@@ -33,11 +33,13 @@ class MoviPlusProvider : MainAPI() {
         return if (item.type == "SERIES") {
             newTvSeriesSearchResponse(title, "$mainUrl/api/catalog/${item.id}", TvType.TvSeries) {
                 this.posterUrl = poster
+                this.posterHeaders = mapOf("Referer" to "$mainUrl/")
                 this.year = year
             }
         } else {
             newMovieSearchResponse(title, "$mainUrl/api/catalog/${item.id}", TvType.Movie) {
                 this.posterUrl = poster
+                this.posterHeaders = mapOf("Referer" to "$mainUrl/")
                 this.year = year
             }
         }
@@ -107,7 +109,7 @@ class MoviPlusProvider : MainAPI() {
                         ?: ep.titleEn?.takeIf { it.isNotBlank() && it != "Episode $epNum" }
                         ?: "الحلقة $epNum"
                     episodes.add(
-                        newEpisode("$id|$epId") {
+                        newEpisode("$mainUrl/api/catalog/$id|$epId") {
                             this.name = epTitle
                             this.season = sNum
                             this.episode = epNum
@@ -126,7 +128,7 @@ class MoviPlusProvider : MainAPI() {
                 this.tags = tags
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, id) {
+            newMovieLoadResponse(title, url, TvType.Movie, "$mainUrl/api/catalog/$id") {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = background
                 this.plot = plot
@@ -160,11 +162,15 @@ class MoviPlusProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // data may arrive as a bare id ("abc|ep1") or absolutized by the client
+        // ("https://movi-plus.com/api/catalog/abc|ep1") -> always take the id
+        // segment after the last "/" so playback never 404s on a full URL.
         val (contentId, episodeId) = if (data.contains("|")) {
             val parts = data.split("|")
-            parts[0].trim() to parts.getOrNull(1)?.trim()
+            parts[0].substringAfterLast("/").substringBefore("?").trim() to
+                parts.getOrNull(1)?.substringAfterLast("/")?.substringBefore("?")?.trim()
         } else {
-            data.trim() to null
+            data.substringAfterLast("/").substringBefore("?").trim() to null
         }
         if (contentId.isBlank()) return false
 

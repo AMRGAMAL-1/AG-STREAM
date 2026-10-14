@@ -117,6 +117,109 @@ class QfilmProvider : MainAPI() {
         return Regex("""vid=([A-Za-z0-9]+)""").find(url)?.groupValues?.get(1)
     }
 
+    private fun extractQualityInt(text: String?): Int {
+        val t = text?.lowercase()?.trim() ?: return Qualities.Unknown.value
+        Regex("""(\d{3,4})\s*[xp]""").find(t)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
+        return when {
+            t.contains("4k") || t.contains("2160") -> 2160
+            t.contains("1440") -> 1440
+            t.contains("1080") -> 1080
+            t.contains("720") -> 720
+            t.contains("480") -> 480
+            t.contains("360") -> 360
+            else -> getQualityFromName(text ?: "")
+        }
+    }
+
+    /**
+     * Generic embed harvester for hosts without a dedicated extractor:
+     * unpacks Dean-Edwards packed JS and extracts direct
+     * <source>/file:/.m3u8/.mp4 links with per-quality labels.
+     */
+    private suspend fun harvestEmbed(
+        embedUrl: String,
+        serverName: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
+            val rawHtml = app.get(embedUrl, referer = referer).text
+            val html = try { JsUnpacker(rawHtml).unpack() ?: rawHtml } catch (_: Exception) { rawHtml }
+            var found = false
+            val seen = mutableSetOf<String>()
+            fun emit(raw: String, hint: String?) {
+                var u = raw.trim().replace("\\/", "/")
+                if (u.startsWith("//")) u = "https:$u"
+                if (!u.startsWith("http") || !seen.add(u)) return
+                val low = u.lowercase()
+                if (low.contains(".css") || low.contains(".js") || low.contains(".png") ||
+                    low.contains(".jpg") || low.contains(".jpeg") || low.contains(".gif") ||
+                    low.contains(".webp") || low.contains(".svg") || low.contains(".woff") ||
+                    low.contains("plyr.io") || low.contains("vast") || low.contains("google") ||
+                    low.contains("gstatic") || low.contains("facebook") || low.contains("analytics") ||
+                    low.contains("plausible") || low.contains("histats")
+                ) return
+                val qInt = extractQualityInt((hint ?: "") + " " + u)
+                val qLabel = hint?.takeIf { it.isNotBlank() } ?: "Auto"
+                callback.invoke(
+                    newExtractorLink(source = name, name = "$serverName - $qLabel", url = u) {
+                        this.referer = embedUrl
+                        this.quality = qInt
+                    }
+                )
+                found = true
+            }
+            Regex("""<source[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .findAll(html).forEach { m ->
+                    val tag = m.value
+                    val size = Regex("""size\s*=\s*["']?(\d+)""", RegexOption.IGNORE_CASE)
+                        .find(tag)?.groupValues?.get(1)?.let { "${it}p" }
+                    emit(m.groupValues[1], size)
+                }
+            Regex(
+                """file\s*:\s*["']([^"']+)["'][^}]{0,200}?label\s*:\s*["']([^"']+)["']""",
+                RegexOption.IGNORE_CASE
+            ).findAll(html).forEach { m -> emit(m.groupValues[1], m.groupValues[2]) }
+            Regex("""file\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .findAll(html).forEach { m -> emit(m.groupValues[1], null) }
+            Regex("""https?://[^\s"'<>\\]+\.(?:m3u8|mp4)(?:\?[^\s"'<>\\]*)?""", RegexOption.IGNORE_CASE)
+                .findAll(html).forEach { m -> emit(m.value, null) }
+            Regex("""<iframe[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .findAll(html).forEach { m ->
+                    var src = m.groupValues[1].trim()
+                    if (src.isBlank() || src.startsWith("data:")) return@forEach
+                    if (src.startsWith("//")) src = "https:$src"
+                    if (!src.startsWith("http")) return@forEach
+                    val low = src.lowercase()
+                    if (low.contains("recaptcha") || low.contains("google")) return@forEach
+                    val collected = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
+                    try {
+                        loadExtractor(src, embedUrl, subtitleCallback) { collected.add(it) }
+                    } catch (_: Exception) { }
+                    collected.forEach { ext ->
+                        if (!seen.add(ext.url)) return@forEach
+                        callback.invoke(
+                            newExtractorLink(
+                                source = name,
+                                name = "$serverName - ${ext.name}",
+                                url = ext.url
+                            ) {
+                                this.referer = ext.referer
+                                this.headers = ext.headers
+                                this.quality = ext.quality
+                                this.type = ext.type
+                            }
+                        )
+                        found = true
+                    }
+                }
+            found
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -149,18 +252,21 @@ class QfilmProvider : MainAPI() {
                         loadExtractor(link, embedUrl, subtitleCallback) { collected.add(it) }
                     } catch (_: Exception) { }
                     if (collected.isEmpty()) {
+                        // No dedicated extractor matched -> harvest the embed page directly
                         try {
-                            if (link.contains(".m3u8") || link.contains(".mp4")) {
-                                callback.invoke(
-                                    newExtractorLink(
-                                        source = name,
-                                        name = label,
-                                        url = link
-                                    ) {
-                                        this.referer = embedUrl
-                                        this.quality = getQualityFromName(label)
-                                    }
-                                )
+                            if (!harvestEmbed(link, label, embedUrl, subtitleCallback, callback)) {
+                                if (link.contains(".m3u8") || link.contains(".mp4")) {
+                                    callback.invoke(
+                                        newExtractorLink(
+                                            source = name,
+                                            name = label,
+                                            url = link
+                                        ) {
+                                            this.referer = embedUrl
+                                            this.quality = getQualityFromName(label)
+                                        }
+                                    )
+                                }
                             }
                         } catch (_: Exception) { }
                     } else {
