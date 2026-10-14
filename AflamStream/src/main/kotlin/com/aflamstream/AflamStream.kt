@@ -211,27 +211,32 @@ class AflamStreamProvider : MainAPI() {
                         else -> getQualityFromName(serverLabel)
                     }
                     try {
-                        val ok = loadExtractor(rawUrl, data, subtitleCallback) { ext ->
-                            callback.invoke(
-                                newExtractorLink(
-                                    source = name,
-                                    name = "$serverLabel - ${ext.name}",
-                                    url = ext.url
-                                ) {
-                                    this.referer = ext.referer
-                                    this.headers = ext.headers
-                                    this.quality = if (ext.quality == Qualities.Unknown.value && qualityHint != Qualities.Unknown.value) qualityHint else ext.quality
-                                    this.type = ext.type
-                                }
-                            )
-                        }
-                        if (!ok && (rawUrl.contains(".m3u8") || rawUrl.contains(".mp4"))) {
+                        val collected = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
+                        try {
+                            loadExtractor(rawUrl, data, subtitleCallback) { collected.add(it) }
+                        } catch (_: Exception) { }
+                        if (collected.isEmpty() && (rawUrl.contains(".m3u8") || rawUrl.contains(".mp4"))) {
                             callback.invoke(
                                 newExtractorLink(source = name, name = serverLabel, url = rawUrl) {
                                     this.referer = data
                                     this.quality = qualityHint
                                 }
                             )
+                        } else {
+                            collected.forEach { ext ->
+                                callback.invoke(
+                                    newExtractorLink(
+                                        source = name,
+                                        name = "$serverLabel - ${ext.name}",
+                                        url = ext.url
+                                    ) {
+                                        this.referer = ext.referer
+                                        this.headers = ext.headers
+                                        this.quality = if (ext.quality == Qualities.Unknown.value && qualityHint != Qualities.Unknown.value) qualityHint else ext.quality
+                                        this.type = ext.type
+                                    }
+                                )
+                            }
                         }
                     } catch (_: Exception) { }
                 }
@@ -239,7 +244,11 @@ class AflamStreamProvider : MainAPI() {
         }
         if (!iframeSrc.isNullOrBlank()) {
             try {
-                loadExtractor(iframeSrc, data, subtitleCallback) { ext ->
+                val collectedDefault = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
+                try {
+                    loadExtractor(iframeSrc, data, subtitleCallback) { collectedDefault.add(it) }
+                } catch (_: Exception) { }
+                collectedDefault.forEach { ext ->
                     callback.invoke(
                         newExtractorLink(source = name, name = "سيرفر افتراضي - ${ext.name}", url = ext.url) {
                             this.referer = ext.referer

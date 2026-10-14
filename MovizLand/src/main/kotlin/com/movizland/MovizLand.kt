@@ -315,7 +315,11 @@ class MovizLandProvider : MainAPI() {
                                             }
                                         )
                                     } else {
-                                        loadExtractor(vUrl, data, subtitleCallback) { ext ->
+                                        val collectedQ = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
+                                        try {
+                                            loadExtractor(vUrl, data, subtitleCallback) { collectedQ.add(it) }
+                                        } catch (_: Exception) { }
+                                        collectedQ.forEach { ext ->
                                             callback.invoke(
                                                 newExtractorLink(
                                                     source = name,
@@ -337,27 +341,32 @@ class MovizLandProvider : MainAPI() {
                     }
 
                     try {
-                        val ok = loadExtractor(url, data, subtitleCallback) { ext ->
-                            callback.invoke(
-                                newExtractorLink(
-                                    source = name,
-                                    name = "$serverName - ${ext.name}",
-                                    url = ext.url
-                                ) {
-                                    this.referer = ext.referer
-                                    this.headers = ext.headers
-                                    this.quality = ext.quality
-                                    this.type = ext.type
-                                }
-                            )
-                        }
-                        if (!ok && (url.contains(".m3u8") || url.contains(".mp4"))) {
+                        val collected = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
+                        try {
+                            loadExtractor(url, data, subtitleCallback) { collected.add(it) }
+                        } catch (_: Exception) { }
+                        if (collected.isEmpty() && (url.contains(".m3u8") || url.contains(".mp4"))) {
                             callback.invoke(
                                 newExtractorLink(source = name, name = serverName, url = url) {
                                     this.referer = data
                                     this.quality = Qualities.Unknown.value
                                 }
                             )
+                        } else {
+                            collected.forEach { ext ->
+                                callback.invoke(
+                                    newExtractorLink(
+                                        source = name,
+                                        name = "$serverName - ${ext.name}",
+                                        url = ext.url
+                                    ) {
+                                        this.referer = ext.referer
+                                        this.headers = ext.headers
+                                        this.quality = ext.quality
+                                        this.type = ext.type
+                                    }
+                                )
+                            }
                         }
                     } catch (_: Exception) { }
                 }

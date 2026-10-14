@@ -144,9 +144,27 @@ class QfilmProvider : MainAPI() {
         coroutineScope {
             servers.map { (link, label) ->
                 async {
-                    var resolved = false
+                    val collected = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
                     try {
-                        resolved = loadExtractor(link, embedUrl, subtitleCallback) { extLink ->
+                        loadExtractor(link, embedUrl, subtitleCallback) { collected.add(it) }
+                    } catch (_: Exception) { }
+                    if (collected.isEmpty()) {
+                        try {
+                            if (link.contains(".m3u8") || link.contains(".mp4")) {
+                                callback.invoke(
+                                    newExtractorLink(
+                                        source = name,
+                                        name = label,
+                                        url = link
+                                    ) {
+                                        this.referer = embedUrl
+                                        this.quality = getQualityFromName(label)
+                                    }
+                                )
+                            }
+                        } catch (_: Exception) { }
+                    } else {
+                        collected.forEach { extLink ->
                             callback.invoke(
                                 newExtractorLink(
                                     source = name,
@@ -162,22 +180,6 @@ class QfilmProvider : MainAPI() {
                                 }
                             )
                         }
-                    } catch (_: Exception) { }
-                    if (!resolved) {
-                        try {
-                            if (link.contains(".m3u8") || link.contains(".mp4")) {
-                                callback.invoke(
-                                    newExtractorLink(
-                                        source = name,
-                                        name = label,
-                                        url = link
-                                    ) {
-                                        this.referer = embedUrl
-                                        this.quality = getQualityFromName(label)
-                                    }
-                                )
-                            }
-                        } catch (_: Exception) { }
                     }
                 }
             }.awaitAll()
