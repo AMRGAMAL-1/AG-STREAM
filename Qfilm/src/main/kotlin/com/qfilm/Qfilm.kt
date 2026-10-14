@@ -145,7 +145,8 @@ class QfilmProvider : MainAPI() {
     ): Boolean {
         return try {
             val rawHtml = app.get(embedUrl, referer = referer).text
-            val html = try { JsUnpacker(rawHtml).unpack() ?: rawHtml } catch (_: Exception) { rawHtml }
+            val unpacked = try { JsUnpacker(rawHtml).unpack() ?: rawHtml } catch (_: Exception) { rawHtml }
+            val html = unpacked.replace("\\/", "/")
             var found = false
             val seen = mutableSetOf<String>()
             suspend fun emit(raw: String, hint: String?) {

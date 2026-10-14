@@ -135,7 +135,8 @@ class ShahidLiveProvider : MainAPI() {
         }
 
         val episodes = mutableListOf<Episode>()
-        detail.seasons?.filter { (it.seasonNumber ?: 0) >= 0 }?.sortedBy { it.seasonNumber }?.forEach { season ->
+        // Season 0 = specials (rarely have sources on embed hosts) -> start from season 1
+        detail.seasons?.filter { (it.seasonNumber ?: 0) >= 1 }?.sortedBy { it.seasonNumber }?.forEach { season ->
             val sNum = season.seasonNumber ?: return@forEach
             val seasonText = try {
                 app.get("$tmdbApi/tv/$id/season/$sNum?language=ar&api_key=$tmdbKey").text
@@ -198,7 +199,8 @@ class ShahidLiveProvider : MainAPI() {
     ): Boolean {
         return try {
             val rawHtml = app.get(embedUrl, referer = referer).text
-            val html = try { JsUnpacker(rawHtml).unpack() ?: rawHtml } catch (_: Exception) { rawHtml }
+            val unpacked = try { JsUnpacker(rawHtml).unpack() ?: rawHtml } catch (_: Exception) { rawHtml }
+            val html = unpacked.replace("\\/", "/")
             var found = false
             val seen = mutableSetOf<String>()
             suspend fun emit(raw: String, hint: String?) {
@@ -284,6 +286,163 @@ class ShahidLiveProvider : MainAPI() {
         }
     }
 
+    private suspend fun seriesImdbId(tmdbId: Int): String? {
+        return try {
+            val text = app.get("$tmdbApi/tv/$tmdbId?language=ar&api_key=$tmdbKey&append_to_response=external_ids").text
+            parseJson<TmdbDetail>(text).externalIds?.imdbId
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Standard embed: dedicated extractors first, generic harvester fallback. */
+    private suspend fun resolveGeneric(
+        embedUrl: String,
+        serverName: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val collected = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
+        try {
+            loadExtractor(embedUrl, referer, subtitleCallback) { collected.add(it) }
+        } catch (_: Exception) { }
+        if (collected.isEmpty()) {
+            try {
+                harvestEmbed(embedUrl, serverName, referer, subtitleCallback, callback)
+            } catch (_: Exception) { }
+        } else {
+            collected.forEach { ext ->
+                callback.invoke(
+                    newExtractorLink(
+                        source = name,
+                        name = "$serverName - ${ext.name}",
+                        url = ext.url
+                    ) {
+                        this.referer = ext.referer
+                        this.headers = ext.headers
+                        this.quality = ext.quality
+                        this.type = ext.type
+                    }
+                )
+            }
+        }
+    }
+
+    /**
+     * VidSrc TO chain: vidsrc.to page -> vsembed.ru iframe ->
+     * /vs_src.php JSON {"src": stellarUrl} -> harvest the player page.
+     */
+    private suspend fun resolveVsEmbed(
+        vidsrcUrl: String,
+        serverName: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val pageHtml = app.get(vidsrcUrl, referer = mainUrl).text
+            val iframeSrc = Regex("""<iframe[^>]+src\s*=\s*["']([^"']*vsembed\.ru[^"']*)["']""", RegexOption.IGNORE_CASE)
+                .find(pageHtml)?.groupValues?.get(1)?.trim()
+                ?: Regex("""<iframe[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                    .find(pageHtml)?.groupValues?.get(1)?.trim()
+            if (iframeSrc.isNullOrBlank()) {
+                resolveGeneric(vidsrcUrl, serverName, mainUrl, subtitleCallback, callback)
+                return
+            }
+            var vsembedUrl = iframeSrc.replace("&amp;", "&").trim()
+            if (vsembedUrl.startsWith("//")) vsembedUrl = "https:$vsembedUrl"
+            if (!vsembedUrl.startsWith("http")) {
+                vsembedUrl = try {
+                    java.net.URL(java.net.URL(vidsrcUrl), vsembedUrl).toString()
+                } catch (_: Exception) {
+                    resolveGeneric(vidsrcUrl, serverName, mainUrl, subtitleCallback, callback)
+                    return
+                }
+            }
+            val vsembedHtml = try {
+                app.get(vsembedUrl, referer = vidsrcUrl).text
+            } catch (_: Exception) {
+                resolveGeneric(vidsrcUrl, serverName, mainUrl, subtitleCallback, callback)
+                return
+            }
+            var apiPath = Regex("""data-api\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .find(vsembedHtml)?.groupValues?.get(1)?.replace("&amp;", "&")?.trim()
+            if (apiPath.isNullOrBlank()) {
+                harvestEmbed(vsembedUrl, serverName, vidsrcUrl, subtitleCallback, callback)
+                return
+            }
+            if (apiPath.startsWith("//")) apiPath = "https:$apiPath"
+            val apiUrl = if (apiPath.startsWith("http")) apiPath else try {
+                java.net.URL(java.net.URL(vsembedUrl), apiPath).toString()
+            } catch (_: Exception) {
+                harvestEmbed(vsembedUrl, serverName, vidsrcUrl, subtitleCallback, callback)
+                return
+            }
+            val playerUrl = try {
+                val apiText = app.get(apiUrl, referer = vsembedUrl).text
+                parseJson<VsSrc>(apiText).src?.trim()
+            } catch (_: Exception) {
+                null
+            }
+            if (playerUrl.isNullOrBlank()) {
+                harvestEmbed(vsembedUrl, serverName, vidsrcUrl, subtitleCallback, callback)
+                return
+            }
+            var done = false
+            try {
+                done = harvestEmbed(playerUrl, serverName, vsembedUrl, subtitleCallback, callback)
+            } catch (_: Exception) { }
+            if (!done) {
+                resolveGeneric(playerUrl, serverName, vsembedUrl, subtitleCallback, callback)
+            }
+        } catch (_: Exception) {
+            try {
+                resolveGeneric(vidsrcUrl, serverName, mainUrl, subtitleCallback, callback)
+            } catch (_: Exception) { }
+        }
+    }
+
+    /**
+     * 2Embed pages carry inner players in data-src/src iframes (vidsrc.buzz ...).
+     * The core 2Embed extractor fabricates a dead streamcash URL, so resolve
+     * the inner embeds manually with the correct referer instead.
+     */
+    private suspend fun resolve2Embed(
+        pageUrl: String,
+        serverName: String,
+        imdb: String?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val pageHtml = app.get(pageUrl, referer = mainUrl).text
+            val inners = mutableListOf<String>()
+            Regex("""data-src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .findAll(pageHtml).forEach { m ->
+                    val u = m.groupValues[1].trim()
+                    if (u.startsWith("http") || u.startsWith("//")) inners.add(u)
+                }
+            Regex("""<iframe[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .findAll(pageHtml).forEach { m ->
+                    val u = m.groupValues[1].trim()
+                    if ((u.startsWith("http") || u.startsWith("//")) && !u.contains("2embed.cc")) inners.add(u)
+                }
+            if (inners.isEmpty()) return
+            inners.distinct().forEach { raw ->
+                var inner = raw.replace("&amp;", "&").trim()
+                if (inner.startsWith("//")) inner = "https:$inner"
+                // vidsrc.buzz needs IMDb ids (/embed/movie/tt...); rewrite numeric tmdb ids when known
+                if (!imdb.isNullOrBlank() && inner.contains("vidsrc.buzz")) {
+                    inner = inner.replace(Regex("""/embed/movie/\d+"""), "/embed/movie/$imdb")
+                    inner = inner.replace(Regex("""/embed/tv/\d+"""), "/embed/tv/$imdb")
+                }
+                resolveGeneric(inner, serverName, pageUrl, subtitleCallback, callback)
+            }
+        } catch (_: Exception) { }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -294,61 +453,40 @@ class ShahidLiveProvider : MainAPI() {
         val type = parsed.first
         val id = parsed.second
         val rest = parsed.third
-        val servers = mutableListOf<Pair<String, String>>()
-        if (type == "movie") {
-            val imdb = imdbId(id)
-            if (!imdb.isNullOrBlank()) {
-                servers.add("https://vaplayer.ru/embed/movie/$imdb?lang=ar" to "VAPlayer (الأساسي)")
-                servers.add("https://www.2embed.cc/embed/$imdb" to "2Embed")
-            }
-            servers.add("https://vidsrc.me/embed/movie?tmdb=$id&ds_lang=ar" to "VidSrc ME")
-            servers.add("https://vidsrc.to/embed/movie/$id?lang=ar" to "VidSrc TO")
-            servers.add("https://autoembed.co/movie/tmdb/$id?subtitle=ar&lang=ar" to "AutoEmbed")
-            servers.add("https://multiembed.mov/directstream.php?video_id=$id&tmdb=1&lang=ar" to "MultiEmbed")
-        } else {
-            val season = rest.getOrNull(0) ?: return false
-            val episode = rest.getOrNull(1) ?: return false
-            servers.add("https://vaplayer.ru/embed/tv/$id/$season/$episode?lang=ar" to "VAPlayer (الأساسي)")
-            servers.add("https://vidsrc.me/embed/tv?tmdb=$id&season=$season&ep=$episode&ds_lang=ar" to "VidSrc ME")
-            servers.add("https://vidsrc.to/embed/tv/$id/$season/$episode?lang=ar" to "VidSrc TO")
-            servers.add("https://autoembed.co/tv/tmdb/$id-$season-$episode?subtitle=ar&lang=ar" to "AutoEmbed")
-            servers.add("https://multiembed.mov/directstream.php?video_id=$id&tmdb=1&s=$season&e=$episode&lang=ar" to "MultiEmbed")
-            servers.add("https://www.2embed.cc/embedtv/$id&s=$season&e=$episode" to "2Embed")
-        }
-        if (servers.isEmpty()) return false
-
+        // Working lineup (verified): VAPlayer + VidSrc TO (vsembed chain) + 2Embed
+        // (vidsrc.me / multiembed / autoembed time out on all networks -> dropped,
+        //  core 2Embed extractor fabricates a dead streamcash URL -> resolved manually).
         coroutineScope {
-            servers.distinctBy { it.first }.map { (embedUrl, serverName) ->
-                async {
-                    val collected = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
-                    try {
-                        loadExtractor(embedUrl, mainUrl, subtitleCallback) { collected.add(it) }
-                    } catch (_: Exception) { }
-                    if (collected.isEmpty()) {
-                        try {
-                            harvestEmbed(embedUrl, serverName, mainUrl, subtitleCallback, callback)
-                        } catch (_: Exception) { }
-                    } else {
-                        collected.forEach { ext ->
-                            callback.invoke(
-                                newExtractorLink(
-                                    source = name,
-                                    name = "$serverName - ${ext.name}",
-                                    url = ext.url
-                                ) {
-                                    this.referer = ext.referer
-                                    this.headers = ext.headers
-                                    this.quality = ext.quality
-                                    this.type = ext.type
-                                }
-                            )
-                        }
-                    }
+            val tasks = mutableListOf<suspend () -> Unit>()
+            if (type == "movie") {
+                val imdb = imdbId(id)
+                if (!imdb.isNullOrBlank()) {
+                    tasks.add({ resolveGeneric("https://vaplayer.ru/embed/movie/$imdb?lang=ar", "VAPlayer (الأساسي)", mainUrl, subtitleCallback, callback) })
+                    tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/movie/$imdb", "VidSrc TO", subtitleCallback, callback) })
+                    tasks.add({ resolve2Embed("https://www.2embed.cc/embed/$imdb", "2Embed", imdb, null, null, subtitleCallback, callback) })
+                } else {
+                    tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/movie/$id?lang=ar", "VidSrc TO", subtitleCallback, callback) })
                 }
+            } else {
+                val season = rest.getOrNull(0) ?: return false
+                val episode = rest.getOrNull(1) ?: return false
+                tasks.add({ resolveGeneric("https://vaplayer.ru/embed/tv/$id/$season/$episode?lang=ar", "VAPlayer (الأساسي)", mainUrl, subtitleCallback, callback) })
+                tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/tv/$id/$season/$episode?lang=ar", "VidSrc TO", subtitleCallback, callback) })
+                val seriesImdb = seriesImdbId(id)
+                tasks.add({ resolve2Embed("https://www.2embed.cc/embedtv/$id&s=$season&e=$episode", "2Embed", seriesImdb, season, episode, subtitleCallback, callback) })
+            }
+            if (tasks.isEmpty()) return false
+            tasks.map { task ->
+                async { task() }
             }.awaitAll()
         }
         return true
     }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class VsSrc(
+        @JsonProperty("src") val src: String?
+    )
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class TmdbPage(

@@ -102,12 +102,67 @@ class EgyBestProvider : MainAPI() {
         return null
     }
 
+    private fun cleanTitle(raw: String): String {
+        return raw.replace(Regex("""\(\s*\)"""), "")
+            .replace(Regex("""\s{2,}"""), " ")
+            .trim()
+    }
+
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
-        val rawTitle = document.selectFirst("h1")?.ownText()?.trim()?.takeIf { it.isNotBlank() }
-            ?: document.selectFirst("h1")?.text()?.trim()?.substringBefore("(")?.trim()
-            ?: document.selectFirst("meta[property=og:title]")?.attr("content")?.substringBefore(" - ")?.trim()
-            ?: return null
+        val path = try {
+            java.net.URI(url).path ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+        val firstSeg = path.trim('/').substringBefore("/")
+        val isListing = firstSeg in setOf("movies", "series", "episodes", "trending", "category", "page", "tag", "genre")
+        // Hub/listing pages (e.g. /series/<slug>/): no watch servers, but episode cards
+        if (isListing || document.select("button[data-embed-url]").isEmpty()) {
+            val cards = document.select("a.block[href]")
+            if (cards.isNotEmpty() && (isListing || !url.contains("مشاهدة-"))) {
+                val hubTitle = cleanTitle(
+                    document.selectFirst("h1")?.text()?.trim()?.substringBefore("(")?.trim()
+                        ?: document.selectFirst("meta[property=og:title]")?.attr("content")?.substringBefore(" - ")?.trim()
+                        ?: document.selectFirst("title")?.text()?.substringBefore(" - ")?.trim()
+                        ?: ""
+                )
+                val hubPoster = document.selectFirst("meta[property=og:image]")?.attr("content")?.let { fixUrl(it) }
+                val episodes = cards.mapNotNull { a ->
+                    try {
+                        val href = fixUrl(a.attr("href").trim())
+                        if (href.isBlank()) return@mapNotNull null
+                        val epTitle = a.selectFirst("h3.title")?.text()?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                        val epNum = extractEpisodeNumber(epTitle) ?: extractEpisodeNumber(href)
+                        val seasonNum = extractSeasonNumber(epTitle) ?: extractSeasonNumber(href)
+                            ?: extractSeasonNumber(hubTitle) ?: 1
+                        val poster = (a.selectFirst(".block-image img")?.attr("data-src")?.takeIf { it.isNotBlank() }
+                            ?: a.selectFirst(".block-image img")?.attr("src")?.takeIf { it.isNotBlank() && !it.contains("src-default") })?.let { fixUrl(it) }
+                        newEpisode(href) {
+                            this.name = if (hubTitle.isNotBlank()) "$hubTitle - $epTitle" else epTitle
+                            this.season = seasonNum
+                            this.episode = epNum
+                            this.posterUrl = poster ?: hubPoster
+                        }
+                    } catch (_: Exception) {
+                        null
+                    }
+                }.distinctBy { it.data }
+                    .sortedWith(compareBy({ it.season }, { it.episode }))
+                if (episodes.isNotEmpty()) {
+                    return newTvSeriesLoadResponse(hubTitle.ifBlank { "مسلسل" }, url, TvType.TvSeries, episodes) {
+                        this.posterUrl = hubPoster
+                    }
+                }
+            }
+            if (isListing) return null
+        }
+        val rawTitle = cleanTitle(
+            document.selectFirst("h1")?.ownText()?.trim()?.takeIf { it.isNotBlank() }
+                ?: document.selectFirst("h1")?.text()?.trim()?.substringBefore("(")?.trim()
+                ?: document.selectFirst("meta[property=og:title]")?.attr("content")?.substringBefore(" - ")?.trim()
+                ?: return null
+        )
         val title = rawTitle.ifBlank { return null }
         val poster = document.selectFirst("meta[property=og:image]")?.attr("content")?.let { fixUrl(it) }
         val plot = document.selectFirst("meta[name=description]")?.attr("content")?.trim()
@@ -174,7 +229,8 @@ class EgyBestProvider : MainAPI() {
     ): Boolean {
         return try {
             val rawHtml = app.get(embedUrl, referer = referer).text
-            val html = try { JsUnpacker(rawHtml).unpack() ?: rawHtml } catch (_: Exception) { rawHtml }
+            val unpacked = try { JsUnpacker(rawHtml).unpack() ?: rawHtml } catch (_: Exception) { rawHtml }
+            val html = unpacked.replace("\\/", "/")
             var found = false
             val seen = mutableSetOf<String>()
             suspend fun emit(raw: String, hint: String?) {
