@@ -677,8 +677,6 @@ class EgyDead : MainAPI() {
                         callback(it)
                     }
                 } catch (ex: Exception) {}
-
-                // Rotating MegaMax mirror hosts need the Inertia mirrors flow.
                 if (!emitted && MegaMaxMirror.looksLikeMirror(normalized)) {
                     try {
                         if (MegaMaxMirror.resolve(normalized, serverName, data, subtitleCallback, callback)) {

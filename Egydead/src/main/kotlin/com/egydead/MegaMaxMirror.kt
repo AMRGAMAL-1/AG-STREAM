@@ -158,7 +158,6 @@ object MegaMaxMirror {
 
     private fun parseMirrors(text: String): List<Pair<String, String>> {
         val out = mutableListOf<Pair<String, String>>()
-        // {"driver":"uqload","link":"//uqload.vc/x96lkbrqs193.html",...}
         Regex("""\{\s*"driver"\s*:\s*"([^"]*)"\s*,\s*"link"\s*:\s*"([^"]+)"""")
             .findAll(text).forEach { m ->
                 val link = m.groupValues[2].trim()
