@@ -11,7 +11,9 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.newDrmExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import java.util.UUID
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -33,6 +35,14 @@ class OstoraLiveProvider : MainAPI() {
     private val defaultUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     private val referer = "https://www.ostora.tv/"
     private val deadHosts = setOf("random-cdn.link", "x.random-cdn.link", "hex-cdn.link", "tv.radarapp.me")
+    private val clearkeyUuid: UUID = UUID.fromString("e2719d58-a985-b3c9-781a-b030af78d30e")
+    // CDNs that block the ostora.tv Referer (tested: edgenextcdn/mncdn return 403
+    // when Referer is sent, 200 without it). Media requests to these hosts must
+    // NOT include a Referer header.
+    private val noRefererHosts = setOf(
+        "edgenextcdn.net", "mncdn.com", "akamaized.net",
+        "starzplayarabia.com", "intigral-ott.net", "shahid.net", "shahid.mbc.net"
+    )
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class ApiRoot(
@@ -241,23 +251,149 @@ class OstoraLiveProvider : MainAPI() {
         return false
     }
 
-    private fun parseSources(src: String): List<String> {
-        val out = mutableListOf<String>()
+    private fun needsNoReferer(url: String): Boolean {
+        val host = hostOf(url)
+        return noRefererHosts.any { h -> host == h || host.endsWith(".$h") }
+    }
+
+    private fun mediaHeaders(url: String, ua: String): Map<String, String> {
+        return if (needsNoReferer(url)) mapOf("User-Agent" to ua)
+        else mapOf("User-Agent" to ua, "Referer" to referer)
+    }
+
+    private fun mediaReferer(url: String): String? {
+        return if (needsNoReferer(url)) null else referer
+    }
+
+    private fun toB64UrlPadded(s: String): String {
+        var t = s.trim().replace("+", "-").replace("/", "_")
+        t = t.trimEnd('=')
+        while (t.length % 4 != 0) t += "="
+        return t
+    }
+
+    private fun parseSources(src: String): List<Pair<String, String?>> {
+        val out = mutableListOf<Pair<String, String?>>()
         for (rawPart in src.split("<<R>>")) {
             var chunk = rawPart.trim()
             if (chunk.isEmpty()) continue
             if ("<F>" in chunk) chunk = chunk.substringAfter("<F>")
-            if ("###" in chunk) chunk = chunk.substringBefore("###")
+            var token: String? = null
+            if ("###" in chunk) {
+                token = chunk.substringAfter("###").trim().split(Regex("\\s")).firstOrNull()?.trim()?.takeIf { it.length >= 8 }
+                chunk = chunk.substringBefore("###")
+            }
             if ("|" in chunk) chunk = chunk.substringBefore("|")
             chunk = chunk.trim()
             if (chunk.isEmpty()) continue
-            Regex("""https?://[^\s"'<>\\!]+""").findAll(chunk)
+            val urls = Regex("""https?://[^\s"'<>\\!]+""").findAll(chunk)
                 .map { it.value.trim().trimEnd(';', ',', '.', ')', '!') }
                 .filter { it.startsWith("http") }
                 .distinct()
-                .forEach { u -> if (!isDeadUrl(u)) out.add(u) }
+                .toList()
+            var first = true
+            for (u in urls) {
+                if (isDeadUrl(u)) continue
+                out.add(u to if (first) token else null)
+                first = false
+            }
         }
         return out.distinct()
+    }
+
+    private suspend fun emitDirect(
+        title: String,
+        url: String,
+        ua: String,
+        token: String?,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val headers = mediaHeaders(url, ua)
+        val ref = mediaReferer(url)
+        val low = url.lowercase()
+        return try {
+            when {
+                ".mpd" in low -> {
+                    // ClearKey DRM via ###key:kid token (same format as VOD).
+                    // Without this the player gets encrypted segments it cannot
+                    // decrypt (black screen / immediate 403 handling).
+                    if (token != null && ":" in token) {
+                        val parts = token.split(":", limit = 2).map { it.trim() }
+                        if (parts.size == 2 && parts[0].length >= 8 && parts[1].length >= 8) {
+                            val keyB64 = toB64UrlPadded(parts[0])
+                            val kidB64 = toB64UrlPadded(parts[1])
+                            try {
+                                val probe = app.get(url, headers = headers, timeout = 15).text
+                                if (probe.contains("Access Denied", ignoreCase = true)) {
+                                    Log.d(TAG, "dead mpd (Access Denied) skipped ($url)")
+                                    return false
+                                }
+                            } catch (e: Exception) {
+                                val msg = (e.message ?: "").lowercase()
+                                if ("403" in msg || "404" in msg || "forbidden" in msg || "not found" in msg) {
+                                    Log.d(TAG, "dead mpd skipped ($url): ${e.message}")
+                                    return false
+                                }
+                            }
+                            callback.invoke(
+                                newDrmExtractorLink(
+                                    source = this.name,
+                                    name = "$title - تلقائي",
+                                    url = url,
+                                    type = ExtractorLinkType.DASH,
+                                    uuid = clearkeyUuid,
+                                ) {
+                                    if (ref != null) this.referer = ref
+                                    this.headers = headers
+                                    this.quality = Qualities.Unknown.value
+                                    this.kid = kidB64
+                                    this.key = keyB64
+                                    this.kty = "oct"
+                                }
+                            )
+                            return true
+                        }
+                    }
+                    var mpd: String? = null
+                    var dead = false
+                    try {
+                        mpd = app.get(url, headers = headers, timeout = 15).text
+                        if (mpd.contains("Access Denied", ignoreCase = true)) dead = true
+                    } catch (e: Exception) {
+                        val msg = (e.message ?: "").lowercase()
+                        if ("403" in msg || "404" in msg || "forbidden" in msg || "not found" in msg) dead = true
+                    }
+                    if (dead) {
+                        Log.d(TAG, "dead mpd skipped ($url)")
+                        return false
+                    }
+                    if (mpd != null && mpd.contains("ContentProtection") && mpd.contains("edef8ba9")) {
+                        Log.d(TAG, "drm mpd without key, skipped ($url)")
+                        return false
+                    }
+                    callback.invoke(
+                        newExtractorLink(this.name, "$title - تلقائي", url) {
+                            if (ref != null) this.referer = ref
+                            this.headers = headers
+                            this.quality = Qualities.Unknown.value
+                            this.type = ExtractorLinkType.DASH
+                        }
+                    )
+                    true
+                }
+                else -> {
+                    callback.invoke(
+                        newExtractorLink(this.name, "$title - تلقائي", url) {
+                            if (ref != null) this.referer = ref
+                            this.headers = headers
+                            this.quality = Qualities.Unknown.value
+                            this.type = ExtractorLinkType.M3U8
+                        }
+                    )
+                    true
+                }
+            }
+        } catch (_: Exception) { false }
     }
 
     override suspend fun loadLinks(
@@ -273,9 +409,10 @@ class OstoraLiveProvider : MainAPI() {
             ?: return false
         val src = ch.source ?: return false
         val ua = ch.agent?.takeIf { it.isNotBlank() } ?: defaultUa
-        val headers = mapOf("User-Agent" to ua, "Referer" to referer)
+        val sources = parseSources(src)
+        if (sources.isEmpty()) return false
         var emitted = false
-        for (u in parseSources(src)) {
+        for ((u, token) in sources) {
             try {
                 val low = u.lowercase()
                 when {
@@ -297,20 +434,26 @@ class OstoraLiveProvider : MainAPI() {
                         }
                     }
                     ".mpd" in low -> {
-                        callback.invoke(
-                            newExtractorLink(this.name, "${ch.name} - تلقائي", u) {
-                                this.referer = referer
-                                this.headers = headers
-                                this.quality = Qualities.Unknown.value
-                                this.type = ExtractorLinkType.DASH
-                            }
-                        )
-                        emitted = true
+                        if (emitDirect(ch.name ?: "Live", u, ua, token, callback)) emitted = true
                     }
                     else -> {
+                        val headers = mediaHeaders(u, ua)
+                        val ref = mediaReferer(u)
+                        // NOTE (diagnostic): manar/hamaza/maziika HLS uses
+                        // EXT-X-KEY with a data: URI plus a PNG header prepended
+                        // to every segment. CloudStream Desktop's LocalStreamProxy
+                        // crashes on data: key URIs ("Expected URL scheme 'http'
+                        // or 'https' but was 'data'") so the key is never fetched
+                        // and MPV falls back to showing the prepended Pikachu PNG
+                        // as a still image. This is an upstream client limitation;
+                        // we still emit the playlist so mobile ExoPlayer-based
+                        // clients have a chance.
+                        if (u.contains("manar") || u.contains("hamaza") || u.contains("maziika")) {
+                            Log.d(TAG, "manar-style HLS (data:key+PNG), may show placeholder on Desktop: $u")
+                        }
                         callback.invoke(
                             newExtractorLink(this.name, "${ch.name} - تلقائي", u) {
-                                this.referer = referer
+                                if (ref != null) this.referer = ref
                                 this.headers = headers
                                 this.quality = Qualities.Unknown.value
                                 this.type = ExtractorLinkType.M3U8

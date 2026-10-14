@@ -38,6 +38,13 @@ class OstoraVodProvider : MainAPI() {
     private val clearkeyUuid: UUID = UUID.fromString("e2719d58-a985-b3c9-781a-b030af78d30e")
     private val widevineBrand = "2be49af0-6fbd-4511-8e11-3d6523185bb4"
     private val deadHosts = setOf("random-cdn.link", "x.random-cdn.link", "hex-cdn.link", "tv.radarapp.me")
+    // CDNs that block the ostora.tv Referer (tested: edgenextcdn/mncdn return 403
+    // when Referer is sent, 200 without it). Media requests to these hosts must
+    // NOT include a Referer header.
+    private val noRefererHosts = setOf(
+        "edgenextcdn.net", "mncdn.com", "akamaized.net",
+        "starzplayarabia.com", "intigral-ott.net", "shahid.net", "shahid.mbc.net"
+    )
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class ApiRoot(
@@ -232,6 +239,20 @@ class OstoraVodProvider : MainAPI() {
         return false
     }
 
+    private fun needsNoReferer(url: String): Boolean {
+        val host = hostOf(url)
+        return noRefererHosts.any { h -> host == h || host.endsWith(".$h") }
+    }
+
+    private fun mediaHeaders(url: String, ua: String): Map<String, String> {
+        return if (needsNoReferer(url)) mapOf("User-Agent" to ua)
+        else mapOf("User-Agent" to ua, "Referer" to referer)
+    }
+
+    private fun mediaReferer(url: String): String? {
+        return if (needsNoReferer(url)) null else referer
+    }
+
     private fun toB64UrlPadded(s: String): String {
         var t = s.trim().replace("+", "-").replace("/", "_")
         t = t.trimEnd('=')
@@ -276,7 +297,8 @@ class OstoraVodProvider : MainAPI() {
         token: String?,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val headers = mapOf("User-Agent" to ua, "Referer" to referer)
+        val headers = mediaHeaders(url, ua)
+        val ref = mediaReferer(url)
         val low = url.lowercase()
         return try {
             when {
@@ -287,7 +309,11 @@ class OstoraVodProvider : MainAPI() {
                             val keyB64 = toB64UrlPadded(parts[0])
                             val kidB64 = toB64UrlPadded(parts[1])
                             try {
-                                app.get(url, headers = headers, timeout = 15).text
+                                val probe = app.get(url, headers = headers, timeout = 15).text
+                                if (probe.contains("Access Denied", ignoreCase = true)) {
+                                    Log.d(TAG, "dead mpd (Access Denied) skipped ($url)")
+                                    return false
+                                }
                             } catch (e: Exception) {
                                 val msg = (e.message ?: "").lowercase()
                                 if ("403" in msg || "404" in msg || "forbidden" in msg || "not found" in msg) {
@@ -303,7 +329,7 @@ class OstoraVodProvider : MainAPI() {
                                     type = ExtractorLinkType.DASH,
                                     uuid = clearkeyUuid,
                                 ) {
-                                    this.referer = referer
+                                    if (ref != null) this.referer = ref
                                     this.headers = headers
                                     this.quality = Qualities.Unknown.value
                                     this.kid = kidB64
@@ -318,6 +344,7 @@ class OstoraVodProvider : MainAPI() {
                     var dead = false
                     try {
                         mpd = app.get(url, headers = headers, timeout = 15).text
+                        if (mpd.contains("Access Denied", ignoreCase = true)) dead = true
                     } catch (e: Exception) {
                         val msg = (e.message ?: "").lowercase()
                         if ("403" in msg || "404" in msg || "forbidden" in msg || "not found" in msg) dead = true
@@ -332,7 +359,7 @@ class OstoraVodProvider : MainAPI() {
                     }
                     callback.invoke(
                         newExtractorLink(this.name, "$title - تلقائي", url) {
-                            this.referer = referer
+                            if (ref != null) this.referer = ref
                             this.headers = headers
                             this.quality = Qualities.Unknown.value
                             this.type = ExtractorLinkType.DASH
@@ -343,7 +370,7 @@ class OstoraVodProvider : MainAPI() {
                 else -> {
                     callback.invoke(
                         newExtractorLink(this.name, "$title - تلقائي", url) {
-                            this.referer = referer
+                            if (ref != null) this.referer = ref
                             this.headers = headers
                             this.quality = Qualities.Unknown.value
                             this.type = if (".mp4" in low) ExtractorLinkType.VIDEO else ExtractorLinkType.M3U8
