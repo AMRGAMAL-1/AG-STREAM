@@ -32,7 +32,7 @@ class QanwatLiveProvider : MainAPI() {
         }
     }
 
-    private fun fetchFeed(feedUrl: String): List<SearchResponse> {
+    private suspend fun fetchFeed(feedUrl: String): List<SearchResponse> {
         return try {
             val text = app.get(feedUrl, referer = mainUrl).text
             val feed = parseJson<FeedRoot>(text).feed
