@@ -3,6 +3,11 @@ package com.mbclive
 import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonProperty
+import java.net.URLEncoder
+import java.util.UUID
 
 class MbcLiveProvider : MainAPI() {
     override var mainUrl = "https://shahid.mbc.net"
@@ -13,6 +18,47 @@ class MbcLiveProvider : MainAPI() {
 
     private val TAG = "MbcLive"
     private data class Ch(val name: String, val group: String, val slug: String, val url: String, val logo: String?)
+
+    private val WIDEVINE_UUID: UUID = UUID.fromString("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed")
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class ShahidNext(
+        @JsonProperty("props") val props: ShahidProps? = null
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class ShahidProps(
+        @JsonProperty("pageProps") val pageProps: ShahidPageProps? = null
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class ShahidPageProps(
+        @JsonProperty("requiredSubscription") val requiredSubscription: Boolean? = null,
+        @JsonProperty("playout") val playout: ShahidPlayout? = null
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class ShahidPlayout(
+        @JsonProperty("url") val url: String? = null,
+        @JsonProperty("drm") val drm: Boolean? = null,
+        @JsonProperty("mediaFormat") val mediaFormat: String? = null,
+        @JsonProperty("drmInfo") val drmInfo: ShahidDrmInfo? = null
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class ShahidDrmInfo(
+        @JsonProperty("signature") val signature: String? = null,
+        @JsonProperty("fairplay") val fairplay: String? = null
+    )
+
+    private data class DynCh(
+        val name: String,
+        val group: String,
+        val slug: String,
+        val pageSlug: String,
+        val channelId: String,
+        val logo: String?
+    )
 
     private val W = "https://commons.wikimedia.org/wiki/Special:FilePath/"
     private fun logo(file: String) = "$W$file?width=400"
@@ -40,6 +86,26 @@ class MbcLiveProvider : MainAPI() {
     )
     private fun slugUrl(slug: String) = "$mainUrl/live/$slug"
 
+    private fun shahidLogo(id: String) =
+        "https://shahid.mbc.net/mediaObject/$id?height=253&width=450&croppingPoint=&version=1"
+
+    private val dynChannels = listOf(
+        DynCh("MBC 3", "MBC العامة", "mbc-3", "mbc3", "816771", shahidLogo("42dcf4e4-17e3-466a-8289-2951b7d48361")),
+        DynCh("الشرق Bloomberg", "الإخبارية", "asharq-bloomberg", "الشرق-bloomberg", "862837", shahidLogo("d6bf9900-29a6-4edb-a39e-8b513a5bdb3f")),
+        DynCh("SBC", "السعودية", "sbc", "sbc", "946940", shahidLogo("b3e92644-efd5-40d4-874c-b4987da33b39")),
+        DynCh("ذكريات", "دراما", "thikrayat", "ذكريات", "946945", shahidLogo("1bf50e9c-cbe0-4f52-b736-fb1a83e424ea")),
+        DynCh("الإخبارية", "السعودية", "alekhbaria", "الإخبارية", "946948", shahidLogo("2794d7e6-7f13-40a8-badb-692223afbcb0")),
+        DynCh("السعودية", "السعودية", "saudi-tv", "السعودية", "946938", shahidLogo("e31676cd-b604-4daf-88a4-710598ed23bd")),
+        DynCh("السعودية الآن", "السعودية", "ksa-now", "السعودية-الآن", "999927", shahidLogo("80d24dd4-d332-42e3-a6fb-0f2e7519b327")),
+        DynCh("القرآن الكريم", "ديني", "quran-tv", "القرآن-الكريم", "946946", shahidLogo("14e16773-f7fe-47b8-ab7b-7d5cd4a862d1")),
+        DynCh("السنة النبوية", "ديني", "sunna-tv", "السنة-النبوية", "946942", shahidLogo("568aebb3-4d34-4fec-95e4-5a495f2ee17e")),
+    )
+
+    private fun dynPageUrl(d: DynCh): String {
+        val enc = URLEncoder.encode(d.pageSlug, "UTF-8").replace("+", "%20")
+        return "https://shahid.mbc.net/ar/livestream/$enc/livechannel-${d.channelId}"
+    }
+
     private val streamHeaders = mapOf(
         "Referer" to "https://shahid.mbc.net/",
         "Origin" to "https://shahid.mbc.net",
@@ -52,6 +118,8 @@ class MbcLiveProvider : MainAPI() {
         "MBC مصر" to "MBC مصر",
         "دراما" to "دراما",
         "الإخبارية" to "الإخبارية",
+        "السعودية" to "السعودية",
+        "ديني" to "ديني",
         "منوعات" to "منوعات",
         "راديو" to "راديو",
     )
@@ -62,19 +130,57 @@ class MbcLiveProvider : MainAPI() {
         }
     }
 
+    private fun DynCh.toLive(): SearchResponse {
+        return newLiveSearchResponse(name = this.name, url = slugUrl(this.slug)) {
+            this.posterUrl = this@toLive.logo
+        }
+    }
+
+    private suspend fun fetchPlayout(d: DynCh): ShahidPlayout? {
+        return try {
+            val txt = app.get(dynPageUrl(d), headers = streamHeaders, timeout = 20).text
+            val json = Regex("""<script id="__NEXT_DATA__"[^>]*>(.*?)</script>""", RegexOption.DOT_MATCHES_ALL)
+                .find(txt)?.groupValues?.get(1) ?: return null
+            val page = parseJson<ShahidNext>(json)
+            if (page.props?.pageProps?.requiredSubscription == true) {
+                Log.d(TAG, "requires subscription: ${d.slug}")
+                return null
+            }
+            page.props?.pageProps?.playout?.takeIf { !it.url.isNullOrBlank() }
+        } catch (e: Exception) {
+            Log.d(TAG, "playout fetch failed ${d.slug}: ${e.message}")
+            null
+        }
+    }
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val list = if (request.data == "all") channels
-        else channels.filter { it.group == request.data }
+        if (request.data == "all") {
+            val all = channels.map { it.toLive() } + dynChannels.map { it.toLive() }
+            Log.d(TAG, "getMainPage ${request.name} -> ${all.size}")
+            return newHomePageResponse(request.name, all)
+        }
+        val list = channels.filter { it.group == request.data }.map { it.toLive() } +
+            dynChannels.filter { it.group == request.data }.map { it.toLive() }
         Log.d(TAG, "getMainPage ${request.name} -> ${list.size}")
-        return newHomePageResponse(request.name, list.map { it.toLive() })
+        return newHomePageResponse(request.name, list)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        return channels.filter { it.name.contains(query, ignoreCase = true) }
-            .map { it.toLive() }
+        return (channels.filter { it.name.contains(query, ignoreCase = true) }.map { it.toLive() } +
+            dynChannels.filter { it.name.contains(query, ignoreCase = true) }.map { it.toLive() })
     }
 
     override suspend fun load(url: String): LoadResponse {
+        val dyn = dynChannels.find { slugUrl(it.slug) == url }
+        if (dyn != null) {
+            return newLiveStreamLoadResponse(
+                name = dyn.name,
+                url = url,
+                dataUrl = url
+            ) {
+                this.posterUrl = dyn.logo
+            }
+        }
         val ch = channels.find { slugUrl(it.slug) == url } ?: channels.find { it.url == url }
         val streamUrl = ch?.url ?: url
         return newLiveStreamLoadResponse(
@@ -92,6 +198,8 @@ class MbcLiveProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        val dyn = dynChannels.find { slugUrl(it.slug) == data }
+        if (dyn != null) return loadDynLinks(dyn, callback)
         val ch = channels.find { slugUrl(it.slug) == data } ?: channels.find { it.url == data }
         val streamUrl = ch?.url ?: data
         val baseName = ch?.name ?: this.name
@@ -133,6 +241,81 @@ class MbcLiveProvider : MainAPI() {
             }
         )
         return true
+    }
+
+    private suspend fun loadDynLinks(
+        dyn: DynCh,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val pl = fetchPlayout(dyn) ?: return false
+        val streamUrl = pl.url ?: return false
+        if (pl.drm == true) {
+            val license = pl.drmInfo?.signature
+            if (license.isNullOrBlank()) {
+                Log.d(TAG, "drm without license: ${dyn.slug}")
+                return false
+            }
+            return try {
+                callback.invoke(
+                    newDrmExtractorLink(
+                        source = this.name,
+                        name = "${dyn.name} - تلقائي (Widevine - كل الجودات)",
+                        url = streamUrl,
+                        type = ExtractorLinkType.DASH,
+                        uuid = WIDEVINE_UUID,
+                    ) {
+                        this.referer = "https://shahid.mbc.net/"
+                        this.headers = streamHeaders
+                        this.quality = Qualities.Unknown.value
+                        this.licenseUrl = license
+                    }
+                )
+                Log.d(TAG, "drm dash emitted for ${dyn.slug}")
+                true
+            } catch (e: Exception) {
+                Log.d(TAG, "drm link failed ${dyn.slug}: ${e.message}")
+                false
+            }
+        }
+        return try {
+            val txt = app.get(streamUrl, headers = streamHeaders, timeout = 15).text
+            val levels = parseM3u8Levels(txt, streamUrl)
+            if (levels.isEmpty()) {
+                callback.invoke(
+                    newExtractorLink(
+                        source = this.name,
+                        name = dyn.name,
+                        url = streamUrl,
+                    ) {
+                        this.referer = ""
+                        this.headers = streamHeaders
+                        this.quality = Qualities.Unknown.value
+                        this.type = ExtractorLinkType.M3U8
+                    }
+                )
+                return true
+            }
+            for ((q, u) in levels) {
+                val tag = if (q == Qualities.Unknown.value) "Auto" else "${q}p"
+                callback.invoke(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${dyn.name} ($tag)",
+                        url = u,
+                    ) {
+                        this.referer = ""
+                        this.headers = streamHeaders
+                        this.quality = q
+                        this.type = ExtractorLinkType.M3U8
+                    }
+                )
+            }
+            Log.d(TAG, "variants for ${dyn.name} -> ${levels.size}")
+            true
+        } catch (e: Exception) {
+            Log.d(TAG, "dyn probe failed ${dyn.slug}: ${e.message}")
+            false
+        }
     }
 
     private fun resolveStreamUrl(base: String, ref: String): String {

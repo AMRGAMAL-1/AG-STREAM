@@ -1,7 +1,7 @@
-version = 4
+version = 5
 
 cloudstream {
-    description = "MBC & Rotana live channels (free HLS)"
+    description = "MBC live channels + Saudi/news/religious (clear HLS & Widevine DRM)"
     authors = listOf("AMR GAMAL")
     language = "ar"
 
