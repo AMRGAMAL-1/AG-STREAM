@@ -519,7 +519,7 @@ class ShahidLiveProvider : MainAPI() {
                         newExtractorLink(source = name, name = "$serverName - $label", url = streamUrl) {
                             this.referer = embedUrl
                             this.quality = Qualities.Unknown.value
-                            this.type = if (isMp4) ExtractorLinkType.VIDEO else ExtractorLinkType.HLS
+                            this.type = if (isMp4) ExtractorLinkType.VIDEO else ExtractorLinkType.M3U8
                         }
                     )
                 } catch (_: Exception) { }
