@@ -18,7 +18,6 @@ class RotanaLiveProvider : MainAPI() {
 
     private val W = "https://commons.wikimedia.org/wiki/Special:FilePath/"
     private fun logo(file: String) = "$W$file?width=400"
-    // Channel cards pulled from QanwatLive (blogger banners, s400)
     private val QB = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/"
     private fun qanwat(path: String) = "$QB$path"
     private val channels = listOf(
