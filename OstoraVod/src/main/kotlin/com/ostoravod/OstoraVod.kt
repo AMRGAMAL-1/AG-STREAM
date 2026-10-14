@@ -38,9 +38,6 @@ class OstoraVodProvider : MainAPI() {
     private val clearkeyUuid: UUID = UUID.fromString("e2719d58-a985-b3c9-781a-b030af78d30e")
     private val widevineBrand = "2be49af0-6fbd-4511-8e11-3d6523185bb4"
     private val deadHosts = setOf("random-cdn.link", "x.random-cdn.link", "hex-cdn.link", "tv.radarapp.me")
-    // CDNs that block the ostora.tv Referer (tested: edgenextcdn/mncdn return 403
-    // when Referer is sent, 200 without it). Media requests to these hosts must
-    // NOT include a Referer header.
     private val noRefererHosts = setOf(
         "edgenextcdn.net", "mncdn.com", "akamaized.net",
         "starzplayarabia.com", "intigral-ott.net", "shahid.net", "shahid.mbc.net"

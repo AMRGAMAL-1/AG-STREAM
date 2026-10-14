@@ -36,9 +36,6 @@ class OstoraLiveProvider : MainAPI() {
     private val referer = "https://www.ostora.tv/"
     private val deadHosts = setOf("random-cdn.link", "x.random-cdn.link", "hex-cdn.link", "tv.radarapp.me")
     private val clearkeyUuid: UUID = UUID.fromString("e2719d58-a985-b3c9-781a-b030af78d30e")
-    // CDNs that block the ostora.tv Referer (tested: edgenextcdn/mncdn return 403
-    // when Referer is sent, 200 without it). Media requests to these hosts must
-    // NOT include a Referer header.
     private val noRefererHosts = setOf(
         "edgenextcdn.net", "mncdn.com", "akamaized.net",
         "starzplayarabia.com", "intigral-ott.net", "shahid.net", "shahid.mbc.net"
@@ -314,9 +311,6 @@ class OstoraLiveProvider : MainAPI() {
         return try {
             when {
                 ".mpd" in low -> {
-                    // ClearKey DRM via ###key:kid token (same format as VOD).
-                    // Without this the player gets encrypted segments it cannot
-                    // decrypt (black screen / immediate 403 handling).
                     if (token != null && ":" in token) {
                         val parts = token.split(":", limit = 2).map { it.trim() }
                         if (parts.size == 2 && parts[0].length >= 8 && parts[1].length >= 8) {
@@ -439,15 +433,6 @@ class OstoraLiveProvider : MainAPI() {
                     else -> {
                         val headers = mediaHeaders(u, ua)
                         val ref = mediaReferer(u)
-                        // NOTE (diagnostic): manar/hamaza/maziika HLS uses
-                        // EXT-X-KEY with a data: URI plus a PNG header prepended
-                        // to every segment. CloudStream Desktop's LocalStreamProxy
-                        // crashes on data: key URIs ("Expected URL scheme 'http'
-                        // or 'https' but was 'data'") so the key is never fetched
-                        // and MPV falls back to showing the prepended Pikachu PNG
-                        // as a still image. This is an upstream client limitation;
-                        // we still emit the playlist so mobile ExoPlayer-based
-                        // clients have a chance.
                         if (u.contains("manar") || u.contains("hamaza") || u.contains("maziika")) {
                             Log.d(TAG, "manar-style HLS (data:key+PNG), may show placeholder on Desktop: $u")
                         }
