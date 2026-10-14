@@ -40,7 +40,7 @@ class PrimeTVProvider : MainAPI() {
     }
 
     override var mainUrl = FALLBACK_SB_URL
-    override var name = "PrimeTV"
+    override var name = "AMR TV"
     override val hasMainPage = true
     override var lang = "ar"
     override val supportedTypes = setOf(TvType.Live)
@@ -261,7 +261,7 @@ class PrimeTVProvider : MainAPI() {
         val rows = pkgs.mapNotNull { pkg ->
             val list = byPkg[pkg.id]?.map { it.toLive() } ?: return@mapNotNull null
             if (list.isEmpty()) return@mapNotNull null
-            HomePageList(pkg.name ?: "PrimeTV", list)
+            HomePageList(pkg.name ?: "AMR TV", list)
         }
         return newHomePageResponse(rows)
     }
@@ -274,7 +274,7 @@ class PrimeTVProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val data = try { parseJson<LinkData>(url) } catch (_: Exception) { null }
         return newLiveStreamLoadResponse(
-            name = data?.name ?: "PrimeTV",
+            name = data?.name ?: "AMR TV",
             url = url,
             dataUrl = url
         ) {
