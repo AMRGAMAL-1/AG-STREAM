@@ -50,8 +50,6 @@ class FngmlProvider : MainAPI() {
         val items = parseListing(document)
         return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
-
-    // Site search is a JS-only Google CSE block with no server-side results.
     override suspend fun search(query: String): List<SearchResponse> = emptyList()
 
     override suspend fun load(url: String): LoadResponse? {
@@ -105,13 +103,11 @@ class FngmlProvider : MainAPI() {
         } catch (e: Exception) {
             return false
         }
-        // Direct <video><source> links (host requires the post URL as Referer -> 403 otherwise)
         val sources = document.select("video source[src], video[src]").mapNotNull {
             val src = (it.attr("src").takeIf { s -> s.isNotBlank() } ?: return@mapNotNull null).let { u -> fixUrl(u) }
             if (!src.startsWith("http")) return@mapNotNull null
             src
         }.distinct()
-        // Backup: any direct mp4 links in the post body (mirrors)
         val bodyMp4 = Regex("""https?://[^\s"'<>\\]+\.mp4(?:\?[^\s"'<>\\]*)?""", RegexOption.IGNORE_CASE)
             .findAll(document.html()).map { it.value }.filter { it.startsWith("http") }.distinct()
         val all = (sources + bodyMp4).distinct().filter { it.contains(".mp4") }

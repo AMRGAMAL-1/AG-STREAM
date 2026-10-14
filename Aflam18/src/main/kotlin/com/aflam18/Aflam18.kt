@@ -43,7 +43,6 @@ class Aflam18Provider : MainAPI() {
     private fun parseListing(document: org.jsoup.nodes.Document): List<SearchResponse> {
         val posts = document.select("#recent-content .post, article.post").mapNotNull { postToResult(it) }
         if (posts.isNotEmpty()) return posts.distinctBy { it.url }
-        // Fallback: widget cards (thumbnail-link + entry-wrap)
         return document.select("a.thumbnail-link[href]").mapNotNull { a ->
             val href = fixUrl(a.attr("href"))
             if (href.isBlank() || href == mainUrl || href == "$mainUrl/") return@mapNotNull null
@@ -234,7 +233,6 @@ class Aflam18Provider : MainAPI() {
             return false
         }
         val servers = mutableListOf<Pair<String, String>>()
-        // Video tabs: <a class="vtg-tab" data-video-url="v1:...">ServerName</a>
         document.select("a.vtg-tab[data-video-url], .vtg-tabs-list a[data-video-url]").forEach { a ->
             val raw = a.attr("data-video-url").trim()
             if (raw.isBlank()) return@forEach
@@ -244,7 +242,6 @@ class Aflam18Provider : MainAPI() {
             val url = if (decoded.startsWith("//")) "https:$decoded" else decoded
             servers.add(url to label)
         }
-        // Backup: JSON blob in <script class="vtg-video-urls">
         document.select("script.vtg-video-urls").forEach { script ->
             try {
                 parseJson<List<String>>(script.data()).forEach { raw ->
