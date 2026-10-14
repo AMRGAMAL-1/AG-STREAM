@@ -263,7 +263,6 @@ class EgyBestProvider : MainAPI() {
             return false
         }
         val servers = mutableListOf<Pair<String, String>>()
-        // Watch servers: <button class="btn" data-embed-url="...">hostname</button>
         document.select("button[data-embed-url]").forEach { btn ->
             val embed = btn.attr("data-embed-url").trim()
             if (embed.isBlank()) return@forEach
@@ -272,7 +271,6 @@ class EgyBestProvider : MainAPI() {
             val label = btn.text().trim().replace(Regex("""\s+"""), " ").takeIf { it.isNotBlank() } ?: "سيرفر مشاهدة"
             servers.add(url to label)
         }
-        // Default player iframe (skip trailer/youtube)
         document.select("iframe#mainPlayer[src], iframe.player-iframe[src]").forEach { iframe ->
             val src = iframe.attr("src").trim()
             if (src.isBlank() || !src.startsWith("http")) return@forEach
