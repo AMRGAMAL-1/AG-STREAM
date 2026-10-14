@@ -89,9 +89,9 @@ class OstoraLiveProvider : MainAPI() {
     }
 
     private fun decryptApi(raw: String): String {
-        var clean = raw.trim()
+        var clean = raw.trim().replace("-", "+").replace("_", "/")
         while (clean.length % 4 != 0) clean += "="
-        val ct = Base64.decode(clean, Base64.URL_SAFE)
+        val ct = Base64.decode(clean, Base64.DEFAULT)
         val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(hexToBytes(keyHex), "AES"), IvParameterSpec(hexToBytes(ivHex)))
         return String(cipher.doFinal(ct), Charsets.UTF_8)
