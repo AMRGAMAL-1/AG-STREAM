@@ -148,7 +148,7 @@ class QfilmProvider : MainAPI() {
             val html = try { JsUnpacker(rawHtml).unpack() ?: rawHtml } catch (_: Exception) { rawHtml }
             var found = false
             val seen = mutableSetOf<String>()
-            fun emit(raw: String, hint: String?) {
+            suspend fun emit(raw: String, hint: String?) {
                 var u = raw.trim().replace("\\/", "/")
                 if (u.startsWith("//")) u = "https:$u"
                 if (!u.startsWith("http") || !seen.add(u)) return
@@ -170,29 +170,31 @@ class QfilmProvider : MainAPI() {
                 )
                 found = true
             }
-            Regex("""<source[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-                .findAll(html).forEach { m ->
-                    val tag = m.value
-                    val size = Regex("""size\s*=\s*["']?(\d+)""", RegexOption.IGNORE_CASE)
-                        .find(tag)?.groupValues?.get(1)?.let { "${it}p" }
-                    emit(m.groupValues[1], size)
-                }
-            Regex(
+            for (m in Regex("""<source[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE).findAll(html)) {
+                val tag = m.value
+                val size = Regex("""size\s*=\s*["']?(\d+)""", RegexOption.IGNORE_CASE)
+                    .find(tag)?.groupValues?.get(1)?.let { "${it}p" }
+                emit(m.groupValues[1], size)
+            }
+            for (m in Regex(
                 """file\s*:\s*["']([^"']+)["'][^}]{0,200}?label\s*:\s*["']([^"']+)["']""",
                 RegexOption.IGNORE_CASE
-            ).findAll(html).forEach { m -> emit(m.groupValues[1], m.groupValues[2]) }
-            Regex("""file\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-                .findAll(html).forEach { m -> emit(m.groupValues[1], null) }
-            Regex("""https?://[^\s"'<>\\]+\.(?:m3u8|mp4)(?:\?[^\s"'<>\\]*)?""", RegexOption.IGNORE_CASE)
-                .findAll(html).forEach { m -> emit(m.value, null) }
-            Regex("""<iframe[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-                .findAll(html).forEach { m ->
+            ).findAll(html)) {
+                emit(m.groupValues[1], m.groupValues[2])
+            }
+            for (m in Regex("""file\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE).findAll(html)) {
+                emit(m.groupValues[1], null)
+            }
+            for (m in Regex("""https?://[^\s"'<>\\]+\.(?:m3u8|mp4)(?:\?[^\s"'<>\\]*)?""", RegexOption.IGNORE_CASE).findAll(html)) {
+                emit(m.value, null)
+            }
+            for (m in Regex("""<iframe[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE).findAll(html)) {
                     var src = m.groupValues[1].trim()
-                    if (src.isBlank() || src.startsWith("data:")) return@forEach
+                    if (src.isBlank() || src.startsWith("data:")) continue
                     if (src.startsWith("//")) src = "https:$src"
-                    if (!src.startsWith("http")) return@forEach
+                    if (!src.startsWith("http")) continue
                     val low = src.lowercase()
-                    if (low.contains("recaptcha") || low.contains("google")) return@forEach
+                    if (low.contains("recaptcha") || low.contains("google")) continue
                     val collected = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
                     try {
                         loadExtractor(src, embedUrl, subtitleCallback) { collected.add(it) }
@@ -213,7 +215,7 @@ class QfilmProvider : MainAPI() {
                         )
                         found = true
                     }
-                }
+            }
             found
         } catch (_: Exception) {
             false
