@@ -66,7 +66,6 @@ class BrstejProvider : MainAPI() {
 
     private fun parseListing(document: Document): List<SearchResponse> {
         val out = mutableListOf<SearchResponse>()
-        // Category / search cards.
         document.select("article.pmc-card, article.prs-card").forEach { card ->
             try {
                 val link = card.selectFirst("a.pmc-photo, a.prs-image, a[href*=watch.php?vid=]")
@@ -86,7 +85,6 @@ class BrstejProvider : MainAPI() {
             if (page > 1) return newHomePageResponse(request.name, emptyList(), hasNext = false)
             val document = app.get("$mainUrl/home03").document
             val lists = mutableListOf<HomePageList>()
-            // Hero picks.
             val hero = document.select("article.pbrs-slide").mapNotNull { slide ->
                 try {
                     val link = slide.selectFirst("a.pbrs-watch") ?: return@mapNotNull null
@@ -98,7 +96,6 @@ class BrstejProvider : MainAPI() {
                 }
             }.distinctBy { it.url }
             if (hero.isNotEmpty()) lists.add(HomePageList("اختيارات برستيج", hero))
-            // Today's series.
             val today = document.select("a.ptoday-card").mapNotNull { a ->
                 try {
                     val title = a.selectFirst("span")?.text()
@@ -133,7 +130,6 @@ class BrstejProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        // Series hub page.
         if (url.contains("view-serie.php") || url.contains("series1.php")) {
             return loadSeriesPage(url)
         }
@@ -158,7 +154,6 @@ class BrstejProvider : MainAPI() {
                 this.plot = plot
             }
         }
-        // Episode page: climb to the parent series via breadcrumbs.
         val seriesUrl = document.select("nav[class*=breadcrumb] a").mapNotNull {
             val href = fixUrlLocal(it.attr("href")) ?: return@mapNotNull null
             if (href.contains("view-serie.php") || href.contains("series1.php")) href else null
@@ -219,7 +214,6 @@ class BrstejProvider : MainAPI() {
             }
         }
         if (episodes.isEmpty()) {
-            // Fallback: any watch links on the page.
             document.select("a[href*=watch.php?vid=]").forEach { a ->
                 val href = fixUrlLocal(a.attr("href")) ?: return@forEach
                 val vid = Regex("vid=([A-Za-z0-9]+)").find(href)?.groupValues?.get(1) ?: return@forEach
