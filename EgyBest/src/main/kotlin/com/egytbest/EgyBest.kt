@@ -27,7 +27,8 @@ class EgyBestProvider : MainAPI() {
     private fun cardToResult(a: Element): SearchResponse? {
         val href = fixUrl(a.attr("href").trim())
         if (href.isBlank() || href == mainUrl || href == "$mainUrl/") return null
-        val title = a.selectFirst("h3.title")?.text()?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val rawTitle = a.selectFirst("h3.title")?.text()?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val title = cleanTitle(rawTitle).takeIf { it.isNotBlank() } ?: return null
         val img = a.selectFirst(".block-image img")
         val poster = (img?.attr("data-src")?.takeIf { it.isNotBlank() }
             ?: img?.attr("src")?.takeIf { it.isNotBlank() && !it.contains("src-default") })?.let { fixUrl(it) }
@@ -37,8 +38,8 @@ class EgyBestProvider : MainAPI() {
         } catch (_: Exception) {
             href
         }
-        val isSeries = decoded.contains("مسلسل") || title.contains("مسلسل") ||
-            decoded.contains("الحلقة") || title.contains("الحلقة") || title.contains("الموسم")
+        val isSeries = decoded.contains("مسلسل") || rawTitle.contains("مسلسل") ||
+            decoded.contains("الحلقة") || rawTitle.contains("الحلقة") || rawTitle.contains("الموسم")
         return if (isSeries) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = poster
@@ -103,9 +104,11 @@ class EgyBestProvider : MainAPI() {
     }
 
     private fun cleanTitle(raw: String): String {
-        return raw.replace(Regex("""\(\s*\)"""), "")
-            .replace(Regex("""\s{2,}"""), " ")
-            .trim()
+        var t = raw.replace(Regex("""\(\s*\)"""), "")
+        t = t.replace(Regex("""^(مشاهدة|تحميل)\s+(فيلم|مسلسل|انمي|انمى|برنامج|مسرحية)\s+"""), "")
+        t = t.replace(Regex("""\s+(الحلقة\s*\d+.*|الموسم\s*\d+.*)$"""), "")
+        t = t.replace(Regex("""\s+(مترجم(ة| كامل)?|مترجمة.*|مدبلج(ة)?|مدبلجة.*|كاملة?)$"""), "")
+        return t.replace(Regex("""\s{2,}"""), " ").trim()
     }
 
     override suspend fun load(url: String): LoadResponse? {

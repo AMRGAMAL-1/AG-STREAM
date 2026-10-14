@@ -207,6 +207,7 @@ class ShahidLiveProvider : MainAPI() {
                 if (u.startsWith("//")) u = "https:$u"
                 if (!u.startsWith("http") || !seen.add(u)) return
                 val low = u.lowercase()
+                if (low.contains("streamcash.to")) return
                 if (low.contains(".css") || low.contains(".js") || low.contains(".png") ||
                     low.contains(".jpg") || low.contains(".jpeg") || low.contains(".gif") ||
                     low.contains(".webp") || low.contains(".svg") || low.contains(".woff") ||
@@ -254,6 +255,7 @@ class ShahidLiveProvider : MainAPI() {
                     loadExtractor(src, embedUrl, subtitleCallback) { collected.add(it) }
                 } catch (_: Exception) { }
                 collected.forEach { ext ->
+                    if (ext.url.lowercase().contains("streamcash.to")) return@forEach
                     if (!seen.add(ext.url)) return@forEach
                     callback.invoke(
                         newExtractorLink(
@@ -311,7 +313,7 @@ class ShahidLiveProvider : MainAPI() {
                 harvestEmbed(embedUrl, serverName, referer, subtitleCallback, callback)
             } catch (_: Exception) { }
         } else {
-            collected.forEach { ext ->
+            collected.filterNot { it.url.lowercase().contains("streamcash.to") }.forEach { ext ->
                 callback.invoke(
                     newExtractorLink(
                         source = name,
@@ -402,9 +404,139 @@ class ShahidLiveProvider : MainAPI() {
     }
 
     /**
-     * 2Embed pages carry inner players in data-src/src iframes (vidsrc.buzz ...).
-     * The core 2Embed extractor fabricates a dead streamcash URL, so resolve
-     * the inner embeds manually with the correct referer instead.
+     * VidSrc Buzz / VidEm player family (vidsrc.buzz, videm.xyz):
+     * page embeds var Q = {type,id,s,e,t,ssr:{servers:[{ref,k,name}]}};
+     * mint each server via {apiBase}?a=play&ref=..&t=.. -> {"url":"/_stream?id=..","type":"hls"}.
+     * Arabic servers are emitted first so fast-play picks them.
+     */
+    private fun extractBalancedJson(html: String, marker: String): String? {
+        val start = html.indexOf(marker)
+        if (start < 0) return null
+        val open = html.indexOf('{', start)
+        if (open < 0) return null
+        var depth = 0
+        var inStr = false
+        var esc = false
+        var i = open
+        while (i < html.length) {
+            val ch = html[i]
+            if (inStr) {
+                if (esc) esc = false
+                else if (ch == '\\') esc = true
+                else if (ch == '"') inStr = false
+            } else {
+                if (ch == '"') inStr = true
+                else if (ch == '{') depth++
+                else if (ch == '}') {
+                    depth--
+                    if (depth == 0) return html.substring(open, i + 1)
+                }
+            }
+            i++
+        }
+        return null
+    }
+
+    private fun isBuzzFamily(host: String): Boolean {
+        val h = host.lowercase()
+        return h.contains("vidsrc.buzz") || h.contains("videm.xyz")
+    }
+
+    private suspend fun resolveBuzzFamily(
+        embedUrl: String,
+        serverName: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val pageHtml = app.get(embedUrl, referer = referer).text
+            val qJson = extractBalancedJson(pageHtml, "var Q =") ?: run {
+                resolveGeneric(embedUrl, serverName, referer, subtitleCallback, callback)
+                return
+            }
+            val q = try {
+                parseJson<BuzzQ>(qJson)
+            } catch (_: Exception) {
+                resolveGeneric(embedUrl, serverName, referer, subtitleCallback, callback)
+                return
+            }
+            val t = q.t?.takeIf { it.isNotBlank() } ?: run {
+                resolveGeneric(embedUrl, serverName, referer, subtitleCallback, callback)
+                return
+            }
+            val origin = embedUrl.substringBefore("/embed/")
+            val host = try {
+                java.net.URL(embedUrl).host.lowercase()
+            } catch (_: Exception) {
+                ""
+            }
+            val apiBase = if (host.contains("videm.xyz")) "$origin/api.php" else "$origin/pl/api.php"
+            val streamOrigin = apiBase.substringBefore("/api.php")
+            var servers = q.ssr?.servers?.filter { !it.ref.isNullOrBlank() } ?: emptyList()
+            if (servers.isEmpty()) {
+                try {
+                    val qs = "type=${q.type ?: "movie"}&id=${URLEncoder.encode(q.id ?: "", "UTF-8")}" +
+                        "&s=${q.s ?: 0}&e=${q.e ?: 0}&t=${URLEncoder.encode(t, "UTF-8")}"
+                    val srcText = app.get("$apiBase?a=sources&$qs", referer = embedUrl).text
+                    servers = try {
+                        parseJson<BuzzSources>(srcText).servers?.filter { !it.ref.isNullOrBlank() } ?: emptyList()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                } catch (_: Exception) { }
+            }
+            if (servers.isEmpty()) {
+                resolveGeneric(embedUrl, serverName, referer, subtitleCallback, callback)
+                return
+            }
+            val ordered = servers.sortedWith(
+                compareByDescending<BuzzServer> {
+                    val n = (it.name ?: "").lowercase()
+                    n.contains("arab")
+                }.thenBy {
+                    val n = (it.name ?: "").lowercase()
+                    if (n.contains("english")) 1 else 0
+                }
+            )
+            for (sv in ordered) {
+                val ref = sv.ref ?: continue
+                val label = sv.name?.trim()?.takeIf { it.isNotBlank() } ?: "Auto"
+                try {
+                    val playUrl = "$apiBase?a=play&ref=${URLEncoder.encode(ref, "UTF-8")}&t=${URLEncoder.encode(t, "UTF-8")}"
+                    val playText = app.get(playUrl, referer = embedUrl).text
+                    val play = try {
+                        parseJson<BuzzPlay>(playText)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val streamPath = play?.url?.trim()
+                    if (streamPath.isNullOrBlank()) continue
+                    val streamUrl = if (streamPath.startsWith("http")) streamPath else streamOrigin + streamPath
+                    if (streamUrl.lowercase().contains("streamcash.to")) continue
+                    val isMp4 = (play?.type ?: "hls").equals("mp4", ignoreCase = true)
+                    callback.invoke(
+                        newExtractorLink(source = name, name = "$serverName - $label", url = streamUrl) {
+                            this.referer = embedUrl
+                            this.quality = Qualities.Unknown.value
+                            this.type = if (isMp4) ExtractorLinkType.VIDEO else ExtractorLinkType.HLS
+                        }
+                    )
+                } catch (_: Exception) { }
+            }
+        } catch (_: Exception) {
+            try {
+                resolveGeneric(embedUrl, serverName, referer, subtitleCallback, callback)
+            } catch (_: Exception) { }
+        }
+    }
+
+    /**
+     * 2Embed pages carry inner players in data-src/src iframes AND
+     * onclick go('...') handlers (streamsrcs swish, vidsrc.buzz, videm).
+     * Buzz/VidEm inners use the dedicated play-mint resolver; anything
+     * else goes through the generic extractor+harvester path.
+     * IDs are passed through untouched (buzz accepts TMDB or IMDb).
      */
     private suspend fun resolve2Embed(
         pageUrl: String,
@@ -426,17 +558,40 @@ class ShahidLiveProvider : MainAPI() {
             Regex("""<iframe[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
                 .findAll(pageHtml).forEach { m ->
                     val u = m.groupValues[1].trim()
-                    if ((u.startsWith("http") || u.startsWith("//")) && !u.contains("2embed.cc")) inners.add(u)
+                    if (u.startsWith("http") || u.startsWith("//")) inners.add(u)
                 }
-            if (inners.isEmpty()) return
-            inners.distinct().forEach { raw ->
-                var inner = raw.replace("&amp;", "&").trim()
-                if (inner.startsWith("//")) inner = "https:$inner"
-                if (!imdb.isNullOrBlank() && inner.contains("vidsrc.buzz")) {
-                    inner = inner.replace(Regex("""/embed/movie/\d+"""), "/embed/movie/$imdb")
-                    inner = inner.replace(Regex("""/embed/tv/\d+"""), "/embed/tv/$imdb")
+            Regex("""go\(\s*['"]([^'"]+)['"]\s*\)""", RegexOption.IGNORE_CASE)
+                .findAll(pageHtml).forEach { m ->
+                    val u = m.groupValues[1].trim()
+                    if (u.startsWith("http") || u.startsWith("//")) inners.add(u)
                 }
-                resolveGeneric(inner, serverName, pageUrl, subtitleCallback, callback)
+            val cleaned = inners.map { it.replace("&amp;", "&").trim() }
+                .map { if (it.startsWith("//")) "https:$it" else it }
+                .filter { it.startsWith("http") && !it.contains("about:blank") }
+                .filterNot {
+                    try {
+                        val h = java.net.URL(it).host.lowercase()
+                        h == "www.2embed.cc" || h == "2embed.cc"
+                    } catch (_: Exception) {
+                        true
+                    }
+                }
+                .distinct()
+            if (cleaned.isEmpty()) return
+            for (raw in cleaned) {
+                val inner = raw
+                try {
+                    val host = try {
+                        java.net.URL(inner).host.lowercase()
+                    } catch (_: Exception) {
+                        ""
+                    }
+                    if (isBuzzFamily(host)) {
+                        resolveBuzzFamily(inner, serverName, pageUrl, subtitleCallback, callback)
+                    } else {
+                        resolveGeneric(inner, serverName, pageUrl, subtitleCallback, callback)
+                    }
+                } catch (_: Exception) { }
             }
         } catch (_: Exception) { }
     }
@@ -451,21 +606,26 @@ class ShahidLiveProvider : MainAPI() {
         val type = parsed.first
         val id = parsed.second
         val rest = parsed.third
+        // Working lineup: VidSrcBuzz + VidEm (play-mint API, TMDB ids) +
+        // VidSrc TO (vsembed chain) + 2Embed (inner embeds resolved manually).
+        // Dropped: vaplayer (JS anti-bot, zero links server-side),
+        // vidsrc.me / multiembed / autoembed (time out on all networks),
+        // core 2Embed extractor (fabricates dead streamcash.to URL -> filtered).
         val tasks = mutableListOf<suspend () -> Unit>()
         if (type == "movie") {
             val imdb = imdbId(id)
+            tasks.add({ resolveBuzzFamily("https://vidsrc.buzz/embed/movie/$id", "VidSrcBuzz", mainUrl, subtitleCallback, callback) })
+            tasks.add({ resolveBuzzFamily("https://videm.xyz/embed/movie/$id", "VidEm", mainUrl, subtitleCallback, callback) })
+            tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/movie/${imdb ?: id}", "VidSrc TO", subtitleCallback, callback) })
             if (!imdb.isNullOrBlank()) {
-                tasks.add({ resolveGeneric("https://vaplayer.ru/embed/movie/$imdb?lang=ar", "VAPlayer (الأساسي)", mainUrl, subtitleCallback, callback) })
-                tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/movie/$imdb", "VidSrc TO", subtitleCallback, callback) })
                 tasks.add({ resolve2Embed("https://www.2embed.cc/embed/$imdb", "2Embed", imdb, null, null, subtitleCallback, callback) })
-            } else {
-                tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/movie/$id?lang=ar", "VidSrc TO", subtitleCallback, callback) })
             }
         } else {
             val season = rest.getOrNull(0)
             val episode = rest.getOrNull(1)
             if (season == null || episode == null) return false
-            tasks.add({ resolveGeneric("https://vaplayer.ru/embed/tv/$id/$season/$episode?lang=ar", "VAPlayer (الأساسي)", mainUrl, subtitleCallback, callback) })
+            tasks.add({ resolveBuzzFamily("https://vidsrc.buzz/embed/tv/$id/$season/$episode", "VidSrcBuzz", mainUrl, subtitleCallback, callback) })
+            tasks.add({ resolveBuzzFamily("https://videm.xyz/embed/tv/$id/$season/$episode", "VidEm", mainUrl, subtitleCallback, callback) })
             tasks.add({ resolveVsEmbed("https://vidsrc.to/embed/tv/$id/$season/$episode?lang=ar", "VidSrc TO", subtitleCallback, callback) })
             val seriesImdb = seriesImdbId(id)
             tasks.add({ resolve2Embed("https://www.2embed.cc/embedtv/$id&s=$season&e=$episode", "2Embed", seriesImdb, season, episode, subtitleCallback, callback) })
@@ -482,6 +642,39 @@ class ShahidLiveProvider : MainAPI() {
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class VsSrc(
         @JsonProperty("src") val src: String?
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class BuzzQ(
+        @JsonProperty("type") val type: String?,
+        @JsonProperty("id") val id: String?,
+        @JsonProperty("s") val s: Int?,
+        @JsonProperty("e") val e: Int?,
+        @JsonProperty("t") val t: String?,
+        @JsonProperty("ssr") val ssr: BuzzSsr?
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class BuzzSsr(
+        @JsonProperty("servers") val servers: List<BuzzServer>?
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class BuzzServer(
+        @JsonProperty("ref") val ref: String?,
+        @JsonProperty("k") val k: String?,
+        @JsonProperty("name") val name: String?
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class BuzzSources(
+        @JsonProperty("servers") val servers: List<BuzzServer>?
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class BuzzPlay(
+        @JsonProperty("url") val url: String?,
+        @JsonProperty("type") val type: String?
     )
 
     @JsonIgnoreProperties(ignoreUnknown = true)
