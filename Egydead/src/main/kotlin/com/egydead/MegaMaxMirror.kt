@@ -98,23 +98,26 @@ object MegaMaxMirror {
                     var url = link.trim()
                     if (url.startsWith("//")) url = "https:$url"
                     if (!url.startsWith("http")) continue
+                    val collected = java.util.Collections.synchronizedList(mutableListOf<ExtractorLink>())
                     try {
-                        loadExtractor(url, pageUrl, subtitleCallback) { ext ->
-                            callback.invoke(
-                                newExtractorLink(
-                                    source = "EgyDead",
-                                    name = "MegaMax ${driver.takeIf { it.isNotBlank() } ?: serverName.orEmpty()}".trim(),
-                                    url = ext.url
-                                ) {
-                                    this.referer = ext.referer
-                                    this.headers = ext.headers
-                                    this.quality = if (q != Qualities.Unknown.value) q else ext.quality
-                                    this.type = ext.type
-                                }
-                            )
-                            found = true
-                        }
+                        loadExtractor(url, pageUrl, subtitleCallback) { collected.add(it) }
                     } catch (_: Exception) { }
+                    val tag = "MegaMax ${driver.takeIf { it.isNotBlank() } ?: serverName.orEmpty()}".trim()
+                    for (ext in collected) {
+                        callback.invoke(
+                            newExtractorLink(
+                                source = "EgyDead",
+                                name = tag,
+                                url = ext.url
+                            ) {
+                                this.referer = ext.referer
+                                this.headers = ext.headers
+                                this.quality = if (q != Qualities.Unknown.value) q else ext.quality
+                                this.type = ext.type
+                            }
+                        )
+                        found = true
+                    }
                 }
             }
             return found
