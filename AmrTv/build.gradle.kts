@@ -1,7 +1,7 @@
 version = 1
 
 cloudstream {
-    description = "AMR TV live channels (Supabase catalog, dynamic config)"
+    description = "AMR TV live channels"
     authors = listOf("AMR GAMAL")
     language = "ar"
 

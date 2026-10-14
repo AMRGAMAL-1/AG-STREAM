@@ -1,4 +1,4 @@
-package com.primetv
+package com.amrtv
 
 import android.util.Base64
 import android.util.Log
@@ -17,9 +17,9 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-class PrimeTVProvider : MainAPI() {
+class AmrTvProvider : MainAPI() {
     companion object {
-        private const val TAG = "PrimeTV"
+        private const val TAG = "AmrTv"
 
         private const val FB_PROJECT_ID = "primetv-ott"
         private const val FB_PROJECT_NUMBER = "4279425740"
