@@ -59,8 +59,6 @@ class CimaCloud : MainAPI() {
 
     private suspend fun resolveApi(): String {
         resolvedApi?.let { return it }
-        // The backup-config host is often unreachable; retry it at most every
-        // 5 minutes so a dead host can't stall every single request.
         val now = System.currentTimeMillis()
         if (now - lastConfigAttempt > 5 * 60 * 1000) {
             lastConfigAttempt = now
