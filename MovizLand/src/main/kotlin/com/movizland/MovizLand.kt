@@ -266,14 +266,12 @@ class MovizLandProvider : MainAPI() {
                 )
                 found = true
             }
-            // <source src="...mp4" size="720">
             for (m in Regex("""<source[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE).findAll(html)) {
                 val tag = m.value
                 val size = Regex("""size\s*=\s*["']?(\d+)""", RegexOption.IGNORE_CASE)
                     .find(tag)?.groupValues?.get(1)?.let { "${it}p" }
                 emit(m.groupValues[1], size)
             }
-            // file:"..." + label:"..." pairs (jwplayer-style)
             for (m in Regex(
                 """file\s*:\s*["']([^"']+)["'][^}]{0,200}?label\s*:\s*["']([^"']+)["']""",
                 RegexOption.IGNORE_CASE
@@ -283,11 +281,9 @@ class MovizLandProvider : MainAPI() {
             for (m in Regex("""file\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE).findAll(html)) {
                 emit(m.groupValues[1], null)
             }
-            // generic direct video urls
             for (m in Regex("""https?://[^\s"'<>\\]+\.(?:m3u8|mp4)(?:\?[^\s"'<>\\]*)?""", RegexOption.IGNORE_CASE).findAll(html)) {
                 emit(m.value, null)
             }
-            // nested iframes -> standard extractors, one level
             for (m in Regex("""<iframe[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE).findAll(html)) {
                     var src = m.groupValues[1].trim()
                     if (src.isBlank() || src.startsWith("data:")) continue
