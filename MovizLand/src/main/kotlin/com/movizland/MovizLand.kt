@@ -168,9 +168,6 @@ class MovizLandProvider : MainAPI() {
         val score = Regex("""(\d+(\.\d+)?)""").find(ratingText ?: "")?.groupValues?.get(1)?.toDoubleOrNull()?.let {
             Score.from10(it)
         }
-        val qualityText = document.select(".detail-meta span").map { it.text() }.firstOrNull {
-            it.contains("HD", true) || it.contains("WEB-DL", true) || it.contains("720p") || it.contains("1080p")
-        }
         val year = extractYear(title + " " + document.select(".detail-meta").text())
         val episodeCards = document.select("#episodes a.episode-card[href]")
         if (episodeCards.isNotEmpty()) {
@@ -194,7 +191,6 @@ class MovizLandProvider : MainAPI() {
                 this.plot = plot
                 this.year = year
                 this.score = score
-                this.quality = getQualityFromString(qualityText)
             }
         }
 
@@ -215,7 +211,6 @@ class MovizLandProvider : MainAPI() {
                 this.plot = plot
                 this.year = year
                 this.score = score
-                this.quality = getQualityFromString(qualityText)
             }
         } else {
             val watchUrl = if (url.endsWith("/")) "${url}watch/" else "$url/watch/"
@@ -224,20 +219,7 @@ class MovizLandProvider : MainAPI() {
                 this.plot = plot
                 this.year = year
                 this.score = score
-                this.quality = getQualityFromString(qualityText)
             }
-        }
-    }
-
-    private fun getQualityFromString(text: String?): SearchQuality? {
-        if (text.isNullOrBlank()) return null
-        return when {
-            text.contains("1080", true) -> SearchQuality.HD
-            text.contains("720", true) -> SearchQuality.HD
-            text.contains("HD", true) -> SearchQuality.HD
-            text.contains("WEB-DL", true) -> SearchQuality.HD
-            text.contains("CAM", true) -> SearchQuality.Cam
-            else -> null
         }
     }
 
