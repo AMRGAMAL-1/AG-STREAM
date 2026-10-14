@@ -38,7 +38,8 @@ class OstoraLiveProvider : MainAPI() {
     private val clearkeyUuid: UUID = UUID.fromString("e2719d58-a985-b3c9-781a-b030af78d30e")
     private val noRefererHosts = setOf(
         "edgenextcdn.net", "mncdn.com", "akamaized.net",
-        "starzplayarabia.com", "intigral-ott.net", "shahid.net", "shahid.mbc.net"
+        "starzplayarabia.com", "intigral-ott.net", "shahid.net", "shahid.mbc.net",
+        "ments.shop"
     )
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -225,11 +226,13 @@ class OstoraLiveProvider : MainAPI() {
             }
         }
         val items = if (data != null && !data.id.isBlank()) fetchSubs(data.id) else emptyList()
-        val episodes = items.map { ch ->
+        val episodes = items.mapIndexed { idx, ch ->
             val ed = LinkData("channel", ch.id ?: "", data?.id, ch.name ?: "Unknown", ch.image).toJson()
             newEpisode(ed) {
                 this.name = ch.name
                 this.posterUrl = ch.image?.takeIf { it.isNotBlank() }
+                this.episode = idx + 1
+                this.season = 1
             }
         }
         return newTvSeriesLoadResponse(data?.name ?: "Live", url, TvType.Live, episodes) {
@@ -254,8 +257,20 @@ class OstoraLiveProvider : MainAPI() {
     }
 
     private fun mediaHeaders(url: String, ua: String): Map<String, String> {
-        return if (needsNoReferer(url)) mapOf("User-Agent" to ua)
-        else mapOf("User-Agent" to ua, "Referer" to referer)
+        val base = mutableMapOf(
+            "User-Agent" to ua,
+            "Accept" to "*/*",
+            "Accept-Language" to "ar,en;q=0.9,en-US;q=0.8",
+            "Connection" to "keep-alive"
+        )
+        val host = hostOf(url)
+        if (host.endsWith("shahid.net") || host.endsWith("shahid.mbc.net")
+            || host.endsWith("edgenextcdn.net") || host.endsWith("mncdn.com")
+        ) {
+            base["Origin"] = "https://shahid.mbc.net"
+        }
+        if (!needsNoReferer(url)) base["Referer"] = referer
+        return base
     }
 
     private fun mediaReferer(url: String): String? {
@@ -267,6 +282,21 @@ class OstoraLiveProvider : MainAPI() {
         t = t.trimEnd('=')
         while (t.length % 4 != 0) t += "="
         return t
+    }
+
+    private fun isDeadMpdBody(body: String): Boolean {
+        if (body.isBlank()) return true
+        if (body.contains("Access Denied", ignoreCase = true)) return true
+        if (body.contains("403 Forbidden", ignoreCase = true)) return true
+        val t = body.trimStart()
+        if (t.startsWith("<html", ignoreCase = true)) return true
+        if (!body.contains("<MPD", ignoreCase = true)) return true
+        return false
+    }
+
+    private fun capQuality(url: String): String {
+        if (!url.contains(".mpd")) return url
+        return url.replace("video_height:144-1080", "video_height:144-720")
     }
 
     private fun parseSources(src: String): List<Pair<String, String?>> {
@@ -305,9 +335,10 @@ class OstoraLiveProvider : MainAPI() {
         token: String?,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val headers = mediaHeaders(url, ua)
-        val ref = mediaReferer(url)
-        val low = url.lowercase()
+        val cappedUrl = capQuality(url)
+        val headers = mediaHeaders(cappedUrl, ua)
+        val ref = mediaReferer(cappedUrl)
+        val low = cappedUrl.lowercase()
         return try {
             when {
                 ".mpd" in low -> {
@@ -317,15 +348,15 @@ class OstoraLiveProvider : MainAPI() {
                             val keyB64 = toB64UrlPadded(parts[0])
                             val kidB64 = toB64UrlPadded(parts[1])
                             try {
-                                val probe = app.get(url, headers = headers, timeout = 15).text
-                                if (probe.contains("Access Denied", ignoreCase = true)) {
-                                    Log.d(TAG, "dead mpd (Access Denied) skipped ($url)")
+                                val probe = app.get(cappedUrl, headers = headers, timeout = 15).text
+                                if (isDeadMpdBody(probe)) {
+                                    Log.d(TAG, "dead mpd skipped ($cappedUrl)")
                                     return false
                                 }
                             } catch (e: Exception) {
                                 val msg = (e.message ?: "").lowercase()
                                 if ("403" in msg || "404" in msg || "forbidden" in msg || "not found" in msg) {
-                                    Log.d(TAG, "dead mpd skipped ($url): ${e.message}")
+                                    Log.d(TAG, "dead mpd skipped ($cappedUrl): ${e.message}")
                                     return false
                                 }
                             }
@@ -333,7 +364,7 @@ class OstoraLiveProvider : MainAPI() {
                                 newDrmExtractorLink(
                                     source = this.name,
                                     name = "$title - تلقائي",
-                                    url = url,
+                                    url = cappedUrl,
                                     type = ExtractorLinkType.DASH,
                                     uuid = clearkeyUuid,
                                 ) {
@@ -351,22 +382,22 @@ class OstoraLiveProvider : MainAPI() {
                     var mpd: String? = null
                     var dead = false
                     try {
-                        mpd = app.get(url, headers = headers, timeout = 15).text
-                        if (mpd.contains("Access Denied", ignoreCase = true)) dead = true
+                        mpd = app.get(cappedUrl, headers = headers, timeout = 15).text
+                        if (mpd != null && isDeadMpdBody(mpd)) dead = true
                     } catch (e: Exception) {
                         val msg = (e.message ?: "").lowercase()
                         if ("403" in msg || "404" in msg || "forbidden" in msg || "not found" in msg) dead = true
                     }
                     if (dead) {
-                        Log.d(TAG, "dead mpd skipped ($url)")
+                        Log.d(TAG, "dead mpd skipped ($cappedUrl)")
                         return false
                     }
                     if (mpd != null && mpd.contains("ContentProtection") && mpd.contains("edef8ba9")) {
-                        Log.d(TAG, "drm mpd without key, skipped ($url)")
+                        Log.d(TAG, "drm mpd without key, skipped ($cappedUrl)")
                         return false
                     }
                     callback.invoke(
-                        newExtractorLink(this.name, "$title - تلقائي", url) {
+                        newExtractorLink(this.name, "$title - تلقائي", cappedUrl) {
                             if (ref != null) this.referer = ref
                             this.headers = headers
                             this.quality = Qualities.Unknown.value
