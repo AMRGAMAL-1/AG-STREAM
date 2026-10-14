@@ -252,7 +252,6 @@ class QfilmProvider : MainAPI() {
                         loadExtractor(link, embedUrl, subtitleCallback) { collected.add(it) }
                     } catch (_: Exception) { }
                     if (collected.isEmpty()) {
-                        // No dedicated extractor matched -> harvest the embed page directly
                         try {
                             if (!harvestEmbed(link, label, embedUrl, subtitleCallback, callback)) {
                                 if (link.contains(".m3u8") || link.contains(".mp4")) {

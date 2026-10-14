@@ -39,7 +39,6 @@ class MovizLandProvider : MainAPI() {
         if (href.isBlank() || href == "#") return null
         if (href.startsWith("/")) href = mainUrl + href
         if (!href.contains("moviz.land")) return null
-        // Site links are percent-encoded: decode before matching (مشاهدة-فيلم / مشاهدة-مسلسل)
         val decoded = decodeHref(href)
         if (!decoded.contains("مشاهد")) return null
         if (decoded.contains("/category/") || decoded.contains("/genre/")) return null
@@ -267,7 +266,6 @@ class MovizLandProvider : MainAPI() {
                 )
                 found = true
             }
-            // <source src="...mp4" size="720">
             Regex("""<source[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
                 .findAll(html).forEach { m ->
                     val tag = m.value
@@ -275,17 +273,14 @@ class MovizLandProvider : MainAPI() {
                         .find(tag)?.groupValues?.get(1)?.let { "${it}p" }
                     emit(m.groupValues[1], size)
                 }
-            // file:"..." + label:"..." pairs (jwplayer-style)
             Regex(
                 """file\s*:\s*["']([^"']+)["'][^}]{0,200}?label\s*:\s*["']([^"']+)["']""",
                 RegexOption.IGNORE_CASE
             ).findAll(html).forEach { m -> emit(m.groupValues[1], m.groupValues[2]) }
             Regex("""file\s*:\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
                 .findAll(html).forEach { m -> emit(m.groupValues[1], null) }
-            // generic direct video urls
             Regex("""https?://[^\s"'<>\\]+\.(?:m3u8|mp4)(?:\?[^\s"'<>\\]*)?""", RegexOption.IGNORE_CASE)
                 .findAll(html).forEach { m -> emit(m.value, null) }
-            // nested iframes -> standard extractors, one level
             Regex("""<iframe[^>]+src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
                 .findAll(html).forEach { m ->
                     var src = m.groupValues[1].trim()
@@ -342,7 +337,6 @@ class MovizLandProvider : MainAPI() {
             Triple(if (src.startsWith("//")) "https:$src" else src, label, card.attr("data-quality") == "1")
         }.toMutableList()
         if (servers.isEmpty()) {
-            // Raw-HTML fallback: data-src attributes + iframes (selector-proof)
             val raw = try { watchDoc.html() } catch (_: Exception) { "" }
             Regex("""data-src\s*=\s*"([^"]+)"""").findAll(raw).forEach { m ->
                 val u = m.groupValues[1].trim()
@@ -422,7 +416,6 @@ class MovizLandProvider : MainAPI() {
                             loadExtractor(url, data, subtitleCallback) { collected.add(it) }
                         } catch (_: Exception) { }
                         if (collected.isEmpty()) {
-                            // No dedicated extractor matched -> harvest the embed page directly
                             try {
                                 harvestEmbed(url, serverName, data, subtitleCallback, callback)
                             } catch (_: Exception) { }

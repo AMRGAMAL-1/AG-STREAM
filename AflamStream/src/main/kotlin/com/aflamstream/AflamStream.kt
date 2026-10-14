@@ -139,7 +139,6 @@ class AflamStreamProvider : MainAPI() {
         val rawTitle = document.selectFirst("meta[property=og:title]")?.attr("content")?.trim()
             ?: document.selectFirst("h1")?.text()?.trim()
             ?: return null
-        // Strip site suffixes like " | aflam stream" / " | شاهد الآن" / " - افلام ستريم"
         val title = rawTitle.substringBefore(" | ").substringBefore(" - ").trim().ifBlank { rawTitle }
         val poster = document.selectFirst("meta[property=og:image]")?.attr("content")?.let { fixUrl(it) }
         val plot = document.selectFirst("meta[name=description]")?.attr("content")?.trim()
@@ -321,7 +320,6 @@ class AflamStreamProvider : MainAPI() {
                             loadExtractor(rawUrl, data, subtitleCallback) { collected.add(it) }
                         } catch (_: Exception) { }
                         if (collected.isEmpty()) {
-                            // No dedicated extractor matched -> harvest the embed page directly
                             try {
                                 if (!harvestEmbed(rawUrl, serverLabel, data, subtitleCallback, callback)) {
                                     if (rawUrl.contains(".m3u8") || rawUrl.contains(".mp4")) {

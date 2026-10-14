@@ -162,9 +162,6 @@ class MoviPlusProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // data may arrive as a bare id ("abc|ep1") or absolutized by the client
-        // ("https://movi-plus.com/api/catalog/abc|ep1") -> always take the id
-        // segment after the last "/" so playback never 404s on a full URL.
         val (contentId, episodeId) = if (data.contains("|")) {
             val parts = data.split("|")
             parts[0].substringAfterLast("/").substringBefore("?").trim() to
