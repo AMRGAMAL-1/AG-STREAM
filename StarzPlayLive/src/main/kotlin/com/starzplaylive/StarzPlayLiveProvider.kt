@@ -28,8 +28,6 @@ class StarzPlayLiveProvider : MainAPI() {
 
     private val ua =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-
-    // ---------- API models ----------
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class ConfigResp(
         @JsonProperty("data") val data: List<CatConfig>? = null
@@ -121,8 +119,6 @@ class StarzPlayLiveProvider : MainAPI() {
         val logo: String?,
         val description: String?
     )
-
-    // ---------- category labels (ar) ----------
     private val categoryLabels = mapOf(
         "all" to "كل القنوات",
         "featured" to "متميز",
@@ -155,8 +151,6 @@ class StarzPlayLiveProvider : MainAPI() {
         "religious" to "ديني",
         "radio" to "راديو",
     )
-
-    // ---------- cache ----------
     private var cachedChannels: List<ChInfo> = emptyList()
     private var cacheTime = 0L
     private val CACHE_TTL = 6 * 60 * 60 * 1000L
@@ -169,7 +163,6 @@ class StarzPlayLiveProvider : MainAPI() {
 
     private fun logoOf(images: List<EpgImage>?): String? {
         if (images.isNullOrEmpty()) return null
-        // prefer active png/svg logo
         val active = images.firstOrNull { it.url?.contains("logos/live") == true }
         if (active?.url != null) return active.url
         return images.firstOrNull()?.url
@@ -210,7 +203,6 @@ class StarzPlayLiveProvider : MainAPI() {
                 if (!map.containsKey(c.slug)) map[c.slug] = c
             }
         }
-        // fallback: featured
         if (map.isEmpty()) {
             for (c in fetchCategoryChannels("featured", "ar")) {
                 if (!map.containsKey(c.slug)) map[c.slug] = c
@@ -233,8 +225,6 @@ class StarzPlayLiveProvider : MainAPI() {
         val list = if (request.data == "all") {
             all
         } else {
-            // category slug requested; channels already carry their own category,
-            // but featured overlaps so re-fetch that category directly for accuracy
             if (request.data == "featured") {
                 val feat = fetchCategoryChannels("featured", "ar")
                 if (feat.isNotEmpty()) feat else all.filter { it.category == request.data }
@@ -267,8 +257,6 @@ class StarzPlayLiveProvider : MainAPI() {
             this.plot = ch?.description
         }
     }
-
-    // ---------- guest + drm ----------
     private suspend fun ensureGuest(): Pair<String, String>? {
         val now = System.currentTimeMillis()
         if (guestSpx != null && guestGuid != null && now - guestTime < 20 * 60 * 60 * 1000L) {
@@ -358,7 +346,6 @@ class StarzPlayLiveProvider : MainAPI() {
     }
 
     private fun pickDash(streams: List<StreamUrl>): StreamUrl? {
-        // prefer Widevine DASH (Android). Fallback to any DASH/MPD.
         streams.firstOrNull { it.assetTypes?.contains("dash_widevine_spa") == true && !it.url.isNullOrBlank() }?.let { return it }
         streams.firstOrNull { it.format == "MPEG-DASH" && !it.url.isNullOrBlank() }?.let { return it }
         streams.firstOrNull { it.url?.contains(".mpd") == true }?.let { return it }
@@ -437,8 +424,6 @@ class StarzPlayLiveProvider : MainAPI() {
         )
 
         var emitted = false
-
-        // ---- 1) DASH Widevine (main, contains all qualities 1080/720/540/360 adaptive) ----
         if (dash?.url != null) {
             val pid = dash.pid
             var token: String? = null
@@ -472,7 +457,6 @@ class StarzPlayLiveProvider : MainAPI() {
                     Log.d(TAG, "newDrmExtractorLink failed: ${e.message}")
                 }
             }
-            // fallback plain DASH (will fail without license, but keeps qualities visible)
             if (!emitted) {
                 callback.invoke(
                     newExtractorLink(
@@ -489,16 +473,11 @@ class StarzPlayLiveProvider : MainAPI() {
                 emitted = true
             }
         }
-
-        // ---- 2) HLS variants (each quality as separate link = بجميع الجودات) ----
         if (hls?.url != null) {
             try {
                 val master = app.get(hls.url, headers = mediaHeaders, timeout = 15).text
                 val levels = parseM3u8Levels(master, hls.url)
                 if (levels.isNotEmpty()) {
-                    // try to reuse same Widevine token for HLS Widevine if needed,
-                    // but HLS here is FairPlay (iOS). We still expose qualities;
-                    // Android will prefer DASH above. Expose as M3U8 plain so user sees qualities.
                     for ((q, u) in levels) {
                         val tag = if (q == Qualities.Unknown.value) "تلقائي" else "${q}p"
                         callback.invoke(
@@ -520,7 +499,6 @@ class StarzPlayLiveProvider : MainAPI() {
             } catch (e: Exception) {
                 Log.d(TAG, "hls parse failed $slug: ${e.message}")
             }
-            // always emit master as well if nothing emitted from it
             if (!emitted) {
                 callback.invoke(
                     newExtractorLink(
@@ -537,8 +515,6 @@ class StarzPlayLiveProvider : MainAPI() {
                 emitted = true
             }
         }
-
-        // ---- 3) any remaining streams as fallback ----
         if (!emitted) {
             for (s in streams) {
                 val u = s.url ?: continue
@@ -558,8 +534,6 @@ class StarzPlayLiveProvider : MainAPI() {
                 emitted = true
             }
         }
-
-        // program info for logs
         if (live != null) Log.d(TAG, "live now $slug: ${live.title} (${live.status})")
         return emitted
     }
