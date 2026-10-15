@@ -240,7 +240,11 @@ class OstoraLiveProvider : MainAPI() {
                 this.season = 1
             }
         }
-        return newTvSeriesLoadResponse(data?.name ?: "Live", url, TvType.Live, episodes) {
+        // NOTE: the group page MUST be TvType.TvSeries (not Live). The stock
+        // mobile app treats every TvType.Live response as a movie
+        // (TvType.Live.isMovieType() == true) and shows a single Play button
+        // instead of the channel list. Channels themselves stay Live.
+        return newTvSeriesLoadResponse(data?.name ?: "Live", url, TvType.TvSeries, episodes) {
             this.posterUrl = data?.poster
         }
     }
