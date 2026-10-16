@@ -119,7 +119,7 @@ class OstoraVodProvider : MainAPI() {
                 val txt = app.get(
                     "$apiHost/api/v6.2/$path",
                     headers = mapOf("User-Agent" to defaultUa),
-                    timeout = 30
+                    timeout = 15
                 ).text.trim()
                 if (txt.isNotEmpty()) return decryptApi(txt)
             } catch (e: Exception) {
