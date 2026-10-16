@@ -1,4 +1,4 @@
-version = 3
+version = 4
 
 cloudstream {
     description = "Ostora movies, series and shows"

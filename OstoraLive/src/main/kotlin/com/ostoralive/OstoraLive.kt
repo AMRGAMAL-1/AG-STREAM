@@ -17,6 +17,9 @@ import java.util.UUID
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -120,6 +123,12 @@ class OstoraLiveProvider : MainAPI() {
                 lastErr = e
                 Log.d(TAG, "api failed $path (try ${attempt + 1}/3): ${e.message}")
             }
+            // Backoff with jitter before retrying: hammers neither the
+            // carrier nor Cloudflare, and lets transient blips clear.
+            // Skipped after the final attempt.
+            if (attempt < 2) {
+                delay(700L * (attempt + 1) + (0..400).random())
+            }
         }
         Log.d(TAG, "api giving up $path: ${lastErr?.message}")
         return null
@@ -156,11 +165,17 @@ class OstoraLiveProvider : MainAPI() {
             return emptyList<Section>() to emptyMap<String, List<Item>>()
         }
         val map = mutableMapOf<String, List<Item>>()
+        // Max 4 concurrent section fetches: a 12-wide burst of TLS
+        // handshakes stalls on slow mobile links and trips Cloudflare
+        // throttling; staggered is barely slower on fast nets.
+        val gate = Semaphore(4)
         coroutineScope {
             sections.map { sec ->
                 async {
                     val sid = sec.id ?: return@async
-                    map[sid] = fetchSubs(sid)
+                    gate.withPermit {
+                        map[sid] = fetchSubs(sid)
+                    }
                 }
             }.awaitAll()
         }
