@@ -106,8 +106,6 @@ class Screenify : MainAPI() {
         "Accept" to "application/json",
     )
 
-    // ---------------- models ----------------
-
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class LiveLink(
         @JsonProperty("id") val id: String? = null,
@@ -158,8 +156,6 @@ class Screenify : MainAPI() {
         @JsonProperty("position") val position: Int? = null,
     )
 
-    // ---------------- http ----------------
-
     private fun enc(v: String): String = URLEncoder.encode(v, "UTF-8")
 
     private suspend fun getText(url: String, headers: Map<String, String>): String? {
@@ -176,8 +172,6 @@ class Screenify : MainAPI() {
     private suspend fun myGet(path: String): String? {
         return getText("$MY$path", jsonHeaders)
     }
-
-    // ---------------- live catalog (cached) ----------------
 
     @Volatile private var catsCache: List<SbCategory>? = null
     @Volatile private var chansCache: List<SbChannel>? = null
@@ -240,8 +234,6 @@ class Screenify : MainAPI() {
             this.posterUrl = this@toLive.logo?.takeIf { it.isNotBlank() }
         }
     }
-
-    // ---------------- myychann helpers ----------------
 
     private fun pickStr(o: JSONObject, vararg keys: String): String? {
         for (k in keys) {
@@ -347,13 +339,9 @@ class Screenify : MainAPI() {
         return out
     }
 
-    // ---------------- main page ----------------
-
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         if (page > 1) return newHomePageResponse(emptyList())
         val rows = mutableListOf<HomePageList>()
-
-        // 1) Live TV packages (real Supabase catalog).
         try {
             val (cats, chans) = ensureLiveCatalog()
             if (cats.isNotEmpty() && chans.isNotEmpty()) {
@@ -366,8 +354,6 @@ class Screenify : MainAPI() {
                 }
             }
         } catch (_: Throwable) { }
-
-        // 2) VOD home sections (myychann home.php — server-defined titles).
         try {
             val txt = myGet("/api/v2/home.php?app_version=$APP_VERSION")
             if (txt != null) {
@@ -395,8 +381,6 @@ class Screenify : MainAPI() {
                 }
             }
         } catch (_: Throwable) { }
-
-        // 3) Trending rows (exact APK endpoints; neutral titles, only if non-empty).
         coroutineScope {
             listOf(
                 async {
@@ -439,14 +423,12 @@ class Screenify : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val out = mutableListOf<SearchResponse>()
-        // live channels from cached catalog
         try {
             val (_, chans) = ensureLiveCatalog()
             out.addAll(
                 chans.filter { it.name?.contains(query, ignoreCase = true) == true }.map { it.toLive() }
             )
         } catch (_: Throwable) { }
-        // myychann search (exact APK paths)
         for (path in listOf(
             "/api/movies/?search=${enc(query)}",
             "/api/series/?search=${enc(query)}"
@@ -476,11 +458,7 @@ class Screenify : MainAPI() {
         return out.distinctBy { it.url }
     }
 
-    // ---------------- load ----------------
-
     override suspend fun load(url: String): LoadResponse {
-        // CloudStream resolves relative urls against mainUrl, so payloads
-        // arrive as https://screenifyplus.online/screenify:... — match with contains.
         if (url.contains(LIVE_PREFIX)) {
             val payload = url.substringAfter(LIVE_PREFIX)
             val data = try { parseJson<LiveLink>(payload) } catch (_: Throwable) { null }
@@ -614,8 +592,6 @@ class Screenify : MainAPI() {
         }
     }
 
-    // ---------------- loadLinks ----------------
-
     private fun isDirect(url: String): Boolean =
         Regex("\\.(m3u8|mp4|webm|mkv|ts|mpd)(\\?|#|$)", RegexOption.IGNORE_CASE).containsMatchIn(url)
 
@@ -660,7 +636,6 @@ class Screenify : MainAPI() {
     /** Split embedded h_User-Agent / h_Referer params (dlhd-style links). */
     private fun splitEmbeddedParams(raw: String): Triple<String, Map<String, String>, String> {
         var url = raw.trim()
-        // URL-encoded whole link?
         if (!url.contains("://") && url.contains("%3A")) {
             try { url = URLDecoder.decode(url, "UTF-8") } catch (_: Throwable) { }
         }
@@ -863,7 +838,6 @@ class Screenify : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // ---- live channel (Supabase streams) ----
         if (data.contains(LIVE_PREFIX)) {
             val payload = data.substringAfter(LIVE_PREFIX)
             val link = try { parseJson<LiveLink>(payload) } catch (_: Throwable) { null }
@@ -879,7 +853,6 @@ class Screenify : MainAPI() {
             }
             return ok
         }
-        // ---- myychann movie ----
         if (data.contains(VODM_PREFIX)) {
             val payload = data.substringAfter(VODM_PREFIX)
             val link = try { parseJson<VodLink>(payload) } catch (_: Throwable) { null }
@@ -918,7 +891,6 @@ class Screenify : MainAPI() {
             }
             return ok
         }
-        // ---- myychann episode ----
         if (data.contains(VODEP_PREFIX)) {
             val payload = data.substringAfter(VODEP_PREFIX)
             val link = try { parseJson<VodLink>(payload) } catch (_: Throwable) { null }
@@ -942,7 +914,6 @@ class Screenify : MainAPI() {
             }
             return ok
         }
-        // ---- series page passed directly: resolve first episode ----
         if (data.contains(VODS_PREFIX)) {
             return try {
                 val resp = load(data)
