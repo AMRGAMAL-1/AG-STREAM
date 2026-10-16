@@ -155,6 +155,10 @@ https://raw.githubusercontent.com/AMRGAMAL-1/AG-STREAM/refs/heads/main/repo.json
 
 **AG-STREAM** — by AMR GAMAL
 
+## الرخصة
+
+هذا المشروع مرخّص تحت [GPL-3.0](LICENSE) — حرية الاستخدام والتعديل والمشاركة، بشرط بقاء أي نسخة معدلة مفتوحة المصدر بنفس الرخصة.
+
 </div>
 
 </div>
