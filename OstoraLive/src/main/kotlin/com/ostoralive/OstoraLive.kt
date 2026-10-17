@@ -348,11 +348,6 @@ class OstoraLiveProvider : MainAPI() {
         return try {
             when {
                 ".mpd" in low -> {
-                    // NEVER pre-fetch the MPD body here. MBC/EnaCDN manifest
-                    // URLs are single-use: the first GET consumes them, so a
-                    // probe returns 200 at scrape time and playback gets 403
-                    // half a second later. Emit the candidate and let the
-                    // player do the one real fetch via LocalStreamProxy.
                     if (token != null && ":" in token) {
                         val parts = token.split(":", limit = 2).map { it.trim() }
                         if (parts.size == 2 && parts[0].length >= 8 && parts[1].length >= 8) {
@@ -377,9 +372,6 @@ class OstoraLiveProvider : MainAPI() {
                             return true
                         }
                     }
-                    // Clear MPD: emit as candidate without consuming it. A dead
-                    // link fails fast at playback and the player moves on to
-                    // the next emitted source.
                     callback.invoke(
                         newExtractorLink(this.name, "$title - تلقائي", cappedUrl) {
                             if (ref != null) this.referer = ref
@@ -418,9 +410,6 @@ class OstoraLiveProvider : MainAPI() {
             ?: return false
         val src = ch.source ?: return false
         val ua = ch.agent?.takeIf { it.isNotBlank() } ?: defaultUa
-        // Prefer HLS mirrors first (the stock app looks for M3U8 first and
-        // our HLS proxy path is the most stable). Stable sort keeps the
-        // token attached to its URL and preserves order otherwise.
         val sources = parseSources(src)
             .sortedByDescending { (u, _) -> u.contains(".m3u8", ignoreCase = true) }
         if (sources.isEmpty()) return false
