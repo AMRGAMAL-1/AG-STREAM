@@ -298,39 +298,6 @@ class OstoraLiveProvider : MainAPI() {
         return t
     }
 
-    private fun isDeadMpdBody(body: String): Boolean {
-        if (body.isBlank()) return true
-        if (body.contains("denied by region", ignoreCase = true)) return true
-        if (body.contains("Access Denied", ignoreCase = true)) return true
-        if (body.contains("403 Forbidden", ignoreCase = true)) return true
-        val t = body.trimStart()
-        if (t.startsWith("<html", ignoreCase = true)) return true
-        if (t.startsWith("<!doctype html", ignoreCase = true)) return true
-        if (!body.contains("<MPD", ignoreCase = true)) return true
-        return false
-    }
-
-    private fun isPermanentDeny(body: String): Boolean {
-        return body.contains("denied by region", ignoreCase = true)
-    }
-
-    private suspend fun probeMpd(url: String, headers: Map<String, String>): String? {
-        repeat(3) { attempt ->
-            try {
-                val body = app.get(url, headers = headers, timeout = 15).text
-                if (!isDeadMpdBody(body)) return body
-                if (isPermanentDeny(body)) return null
-                Log.d(TAG, "mpd probe $url flaky 403 (try ${attempt + 1}/3), retrying")
-            } catch (e: Exception) {
-                val msg = (e.message ?: "").lowercase()
-                if ("region" in msg) return null
-                Log.d(TAG, "mpd probe $url err (try ${attempt + 1}/3): ${e.message}")
-            }
-            if (attempt < 2) kotlinx.coroutines.delay(800)
-        }
-        return null
-    }
-
     private fun capQuality(url: String): String {
         if (!url.contains(".mpd")) return url
         var u = url.replace("video_height:144-1080", "video_height:144-720")
@@ -381,15 +348,16 @@ class OstoraLiveProvider : MainAPI() {
         return try {
             when {
                 ".mpd" in low -> {
+                    // NEVER pre-fetch the MPD body here. MBC/EnaCDN manifest
+                    // URLs are single-use: the first GET consumes them, so a
+                    // probe returns 200 at scrape time and playback gets 403
+                    // half a second later. Emit the candidate and let the
+                    // player do the one real fetch via LocalStreamProxy.
                     if (token != null && ":" in token) {
                         val parts = token.split(":", limit = 2).map { it.trim() }
                         if (parts.size == 2 && parts[0].length >= 8 && parts[1].length >= 8) {
                             val keyB64 = toB64UrlPadded(parts[0])
                             val kidB64 = toB64UrlPadded(parts[1])
-                            val probe = probeMpd(cappedUrl, headers)
-                            if (probe == null) {
-                                Log.d(TAG, "drm mpd probe failed but emitting anyway ($cappedUrl)")
-                            }
                             callback.invoke(
                                 newDrmExtractorLink(
                                     source = this.name,
@@ -409,22 +377,9 @@ class OstoraLiveProvider : MainAPI() {
                             return true
                         }
                     }
-                    var mpd: String? = null
-                    var dead = false
-                    try {
-                        mpd = probeMpd(cappedUrl, headers)
-                        if (mpd == null) dead = true
-                    } catch (_: Exception) {
-                        dead = true
-                    }
-                    if (dead) {
-                        Log.d(TAG, "dead mpd skipped ($cappedUrl)")
-                        return false
-                    }
-                    if (mpd != null && mpd.contains("ContentProtection") && mpd.contains("edef8ba9")) {
-                        Log.d(TAG, "drm mpd without key, skipped ($cappedUrl)")
-                        return false
-                    }
+                    // Clear MPD: emit as candidate without consuming it. A dead
+                    // link fails fast at playback and the player moves on to
+                    // the next emitted source.
                     callback.invoke(
                         newExtractorLink(this.name, "$title - تلقائي", cappedUrl) {
                             if (ref != null) this.referer = ref
@@ -463,7 +418,11 @@ class OstoraLiveProvider : MainAPI() {
             ?: return false
         val src = ch.source ?: return false
         val ua = ch.agent?.takeIf { it.isNotBlank() } ?: defaultUa
+        // Prefer HLS mirrors first (the stock app looks for M3U8 first and
+        // our HLS proxy path is the most stable). Stable sort keeps the
+        // token attached to its URL and preserves order otherwise.
         val sources = parseSources(src)
+            .sortedByDescending { (u, _) -> u.contains(".m3u8", ignoreCase = true) }
         if (sources.isEmpty()) return false
         var emitted = false
         for ((u, token) in sources) {
